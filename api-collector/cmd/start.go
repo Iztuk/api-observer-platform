@@ -4,6 +4,7 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"api-collector/internal/indexer"
 	"api-collector/internal/watcher"
 	"fmt"
 	"os"
@@ -19,7 +20,7 @@ import (
 
 // startCmd represents the start command
 var background bool
-var directory string
+var file string
 
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -81,7 +82,23 @@ var startCmd = &cobra.Command{
 		)
 		defer stop()
 
-		return watcher.Watch(ctx, directory)
+		indexBlocks, err := indexer.ReadIndexFile(file)
+		if err != nil {
+			return err
+		}
+
+		tree := indexer.NewBPlusTree[int64, indexer.IndexBlock](128)
+
+		for _, block := range indexBlocks {
+			tree.Insert(block.TimestampStart, block)
+		}
+
+		_, lastBlock, ok := tree.Last()
+		if !ok {
+			return fmt.Errorf("failed to retrieve last block value")
+		}
+
+		return watcher.Watch(ctx, file, lastBlock, tree)
 	},
 }
 
@@ -97,11 +114,11 @@ func init() {
 	)
 
 	startCmd.Flags().StringVarP(
-		&directory,
-		"directory",
-		"d",
+		&file,
+		"file-path",
+		"f",
 		"",
-		"The directory API Collector will be watching",
+		"The file API Collector will be watching",
 	)
 
 	// Here you will define your flags and configuration settings.
