@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.34.1
-// source: query.proto
+// source: proto/query/v1/query.proto
 
 package queryv1
 
@@ -55,11 +55,11 @@ func (x LogType) String() string {
 }
 
 func (LogType) Descriptor() protoreflect.EnumDescriptor {
-	return file_query_proto_enumTypes[0].Descriptor()
+	return file_proto_query_v1_query_proto_enumTypes[0].Descriptor()
 }
 
 func (LogType) Type() protoreflect.EnumType {
-	return &file_query_proto_enumTypes[0]
+	return &file_proto_query_v1_query_proto_enumTypes[0]
 }
 
 func (x LogType) Number() protoreflect.EnumNumber {
@@ -68,7 +68,7 @@ func (x LogType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LogType.Descriptor instead.
 func (LogType) EnumDescriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{0}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{0}
 }
 
 type LogParams struct {
@@ -82,7 +82,7 @@ type LogParams struct {
 
 func (x *LogParams) Reset() {
 	*x = LogParams{}
-	mi := &file_query_proto_msgTypes[0]
+	mi := &file_proto_query_v1_query_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -94,7 +94,7 @@ func (x *LogParams) String() string {
 func (*LogParams) ProtoMessage() {}
 
 func (x *LogParams) ProtoReflect() protoreflect.Message {
-	mi := &file_query_proto_msgTypes[0]
+	mi := &file_proto_query_v1_query_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -107,7 +107,7 @@ func (x *LogParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogParams.ProtoReflect.Descriptor instead.
 func (*LogParams) Descriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{0}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *LogParams) GetStartDate() *timestamppb.Timestamp {
@@ -133,7 +133,6 @@ func (x *LogParams) GetCursor() int64 {
 
 type Log struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Types that are valid to be assigned to Event:
 	//
 	//	*Log_Request
@@ -145,7 +144,7 @@ type Log struct {
 
 func (x *Log) Reset() {
 	*x = Log{}
-	mi := &file_query_proto_msgTypes[1]
+	mi := &file_proto_query_v1_query_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -157,7 +156,7 @@ func (x *Log) String() string {
 func (*Log) ProtoMessage() {}
 
 func (x *Log) ProtoReflect() protoreflect.Message {
-	mi := &file_query_proto_msgTypes[1]
+	mi := &file_proto_query_v1_query_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -170,14 +169,7 @@ func (x *Log) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log.ProtoReflect.Descriptor instead.
 func (*Log) Descriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *Log) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Log) GetEvent() isLog_Event {
@@ -210,11 +202,11 @@ type isLog_Event interface {
 }
 
 type Log_Request struct {
-	Request *Request `protobuf:"bytes,2,opt,name=request,proto3,oneof"`
+	Request *Request `protobuf:"bytes,1,opt,name=request,proto3,oneof"`
 }
 
 type Log_Response struct {
-	Response *Response `protobuf:"bytes,3,opt,name=response,proto3,oneof"`
+	Response *Response `protobuf:"bytes,2,opt,name=response,proto3,oneof"`
 }
 
 func (*Log_Request) isLog_Event() {}
@@ -232,7 +224,7 @@ type Metadata struct {
 
 func (x *Metadata) Reset() {
 	*x = Metadata{}
-	mi := &file_query_proto_msgTypes[2]
+	mi := &file_proto_query_v1_query_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -244,7 +236,7 @@ func (x *Metadata) String() string {
 func (*Metadata) ProtoMessage() {}
 
 func (x *Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_query_proto_msgTypes[2]
+	mi := &file_proto_query_v1_query_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -257,7 +249,7 @@ func (x *Metadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metadata.ProtoReflect.Descriptor instead.
 func (*Metadata) Descriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{2}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Metadata) GetRequestId() string {
@@ -290,7 +282,7 @@ type HeaderValues struct {
 
 func (x *HeaderValues) Reset() {
 	*x = HeaderValues{}
-	mi := &file_query_proto_msgTypes[3]
+	mi := &file_proto_query_v1_query_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -302,7 +294,7 @@ func (x *HeaderValues) String() string {
 func (*HeaderValues) ProtoMessage() {}
 
 func (x *HeaderValues) ProtoReflect() protoreflect.Message {
-	mi := &file_query_proto_msgTypes[3]
+	mi := &file_proto_query_v1_query_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -315,7 +307,7 @@ func (x *HeaderValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeaderValues.ProtoReflect.Descriptor instead.
 func (*HeaderValues) Descriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{3}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *HeaderValues) GetValues() []string {
@@ -339,7 +331,7 @@ type Request struct {
 
 func (x *Request) Reset() {
 	*x = Request{}
-	mi := &file_query_proto_msgTypes[4]
+	mi := &file_proto_query_v1_query_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -351,7 +343,7 @@ func (x *Request) String() string {
 func (*Request) ProtoMessage() {}
 
 func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_query_proto_msgTypes[4]
+	mi := &file_proto_query_v1_query_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,7 +356,7 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{4}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Request) GetMethod() string {
@@ -422,7 +414,7 @@ type Response struct {
 
 func (x *Response) Reset() {
 	*x = Response{}
-	mi := &file_query_proto_msgTypes[5]
+	mi := &file_proto_query_v1_query_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -434,7 +426,7 @@ func (x *Response) String() string {
 func (*Response) ProtoMessage() {}
 
 func (x *Response) ProtoReflect() protoreflect.Message {
-	mi := &file_query_proto_msgTypes[5]
+	mi := &file_proto_query_v1_query_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -447,7 +439,7 @@ func (x *Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Response.ProtoReflect.Descriptor instead.
 func (*Response) Descriptor() ([]byte, []int) {
-	return file_query_proto_rawDescGZIP(), []int{5}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Response) GetStatusCode() int32 {
@@ -485,20 +477,19 @@ func (x *Response) GetMetadata() *Metadata {
 	return nil
 }
 
-var File_query_proto protoreflect.FileDescriptor
+var File_proto_query_v1_query_proto protoreflect.FileDescriptor
 
-const file_query_proto_rawDesc = "" +
+const file_proto_query_v1_query_proto_rawDesc = "" +
 	"\n" +
-	"\vquery.proto\x12\x14apiobserver.query.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x95\x01\n" +
+	"\x1aproto/query/v1/query.proto\x12\x14apiobserver.query.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x95\x01\n" +
 	"\tLogParams\x129\n" +
 	"\n" +
 	"start_date\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tstartDate\x125\n" +
 	"\bend_date\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\aendDate\x12\x16\n" +
-	"\x06cursor\x18\x03 \x01(\x03R\x06cursor\"\x97\x01\n" +
-	"\x03Log\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
-	"\arequest\x18\x02 \x01(\v2\x1d.apiobserver.query.v1.RequestH\x00R\arequest\x12<\n" +
-	"\bresponse\x18\x03 \x01(\v2\x1e.apiobserver.query.v1.ResponseH\x00R\bresponseB\a\n" +
+	"\x06cursor\x18\x03 \x01(\x03R\x06cursor\"\x87\x01\n" +
+	"\x03Log\x129\n" +
+	"\arequest\x18\x01 \x01(\v2\x1d.apiobserver.query.v1.RequestH\x00R\arequest\x12<\n" +
+	"\bresponse\x18\x02 \x01(\v2\x1e.apiobserver.query.v1.ResponseH\x00R\bresponseB\a\n" +
 	"\x05event\"{\n" +
 	"\bMetadata\x12\x1d\n" +
 	"\n" +
@@ -536,20 +527,20 @@ const file_query_proto_rawDesc = "" +
 	"\x05Query\x12\x1f.apiobserver.query.v1.LogParams\x1a\x19.apiobserver.query.v1.Log0\x01B%Z#api-observer/proto/query/v1;queryv1b\x06proto3"
 
 var (
-	file_query_proto_rawDescOnce sync.Once
-	file_query_proto_rawDescData []byte
+	file_proto_query_v1_query_proto_rawDescOnce sync.Once
+	file_proto_query_v1_query_proto_rawDescData []byte
 )
 
-func file_query_proto_rawDescGZIP() []byte {
-	file_query_proto_rawDescOnce.Do(func() {
-		file_query_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_query_proto_rawDesc), len(file_query_proto_rawDesc)))
+func file_proto_query_v1_query_proto_rawDescGZIP() []byte {
+	file_proto_query_v1_query_proto_rawDescOnce.Do(func() {
+		file_proto_query_v1_query_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_query_v1_query_proto_rawDesc), len(file_proto_query_v1_query_proto_rawDesc)))
 	})
-	return file_query_proto_rawDescData
+	return file_proto_query_v1_query_proto_rawDescData
 }
 
-var file_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_query_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
-var file_query_proto_goTypes = []any{
+var file_proto_query_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_proto_query_v1_query_proto_goTypes = []any{
 	(LogType)(0),                  // 0: apiobserver.query.v1.LogType
 	(*LogParams)(nil),             // 1: apiobserver.query.v1.LogParams
 	(*Log)(nil),                   // 2: apiobserver.query.v1.Log
@@ -561,7 +552,7 @@ var file_query_proto_goTypes = []any{
 	nil,                           // 8: apiobserver.query.v1.Response.HeadersEntry
 	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
 }
-var file_query_proto_depIdxs = []int32{
+var file_proto_query_v1_query_proto_depIdxs = []int32{
 	9,  // 0: apiobserver.query.v1.LogParams.start_date:type_name -> google.protobuf.Timestamp
 	9,  // 1: apiobserver.query.v1.LogParams.end_date:type_name -> google.protobuf.Timestamp
 	5,  // 2: apiobserver.query.v1.Log.request:type_name -> apiobserver.query.v1.Request
@@ -582,12 +573,12 @@ var file_query_proto_depIdxs = []int32{
 	0,  // [0:11] is the sub-list for field type_name
 }
 
-func init() { file_query_proto_init() }
-func file_query_proto_init() {
-	if File_query_proto != nil {
+func init() { file_proto_query_v1_query_proto_init() }
+func file_proto_query_v1_query_proto_init() {
+	if File_proto_query_v1_query_proto != nil {
 		return
 	}
-	file_query_proto_msgTypes[1].OneofWrappers = []any{
+	file_proto_query_v1_query_proto_msgTypes[1].OneofWrappers = []any{
 		(*Log_Request)(nil),
 		(*Log_Response)(nil),
 	}
@@ -595,18 +586,18 @@ func file_query_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_query_proto_rawDesc), len(file_query_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_query_v1_query_proto_rawDesc), len(file_proto_query_v1_query_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_query_proto_goTypes,
-		DependencyIndexes: file_query_proto_depIdxs,
-		EnumInfos:         file_query_proto_enumTypes,
-		MessageInfos:      file_query_proto_msgTypes,
+		GoTypes:           file_proto_query_v1_query_proto_goTypes,
+		DependencyIndexes: file_proto_query_v1_query_proto_depIdxs,
+		EnumInfos:         file_proto_query_v1_query_proto_enumTypes,
+		MessageInfos:      file_proto_query_v1_query_proto_msgTypes,
 	}.Build()
-	File_query_proto = out.File
-	file_query_proto_goTypes = nil
-	file_query_proto_depIdxs = nil
+	File_proto_query_v1_query_proto = out.File
+	file_proto_query_v1_query_proto_goTypes = nil
+	file_proto_query_v1_query_proto_depIdxs = nil
 }

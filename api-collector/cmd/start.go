@@ -4,9 +4,13 @@ Copyright © 2026 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"api-collector/internal/identity"
 	"api-collector/internal/indexer"
+	"api-collector/internal/query"
 	"api-collector/internal/watcher"
+	queryv1 "api-collector/proto/query/v1"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -16,6 +20,8 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // startCmd represents the start command
@@ -75,6 +81,11 @@ var startCmd = &cobra.Command{
 
 		defer os.Remove(pidPath)
 
+		collectorID, err := identity.GetOrCreateCollectorID()
+		if err != nil {
+			return err
+		}
+
 		ctx, stop := signal.NotifyContext(
 			cmd.Context(),
 			os.Interrupt,
@@ -100,6 +111,36 @@ var startCmd = &cobra.Command{
 				BlockSize: 100,
 			}
 		}
+
+		grpcListener, err := net.Listen(
+			"tcp",
+			":24899",
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create gRPC listener: %w", err)
+		}
+		defer grpcListener.Close()
+
+		grpcServer := grpc.NewServer()
+
+		queryServer := query.NewServer(
+			file,
+			tree,
+			collectorID,
+		)
+
+		queryv1.RegisterLogServiceServer(
+			grpcServer,
+			queryServer,
+		)
+
+		reflection.Register(grpcServer)
+
+		go func() {
+			if err := grpcServer.Serve(grpcListener); err != nil {
+				fmt.Printf("gRPC server error: %v\n", err)
+			}
+		}()
 
 		return watcher.Watch(ctx, file, lastBlock, tree)
 	},

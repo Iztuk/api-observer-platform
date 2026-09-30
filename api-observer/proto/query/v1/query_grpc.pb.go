@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.34.1
-// source: query.proto
+// source: proto/query/v1/query.proto
 
 package queryv1
 
@@ -120,5 +120,5 @@ var LogService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "query.proto",
+	Metadata: "proto/query/v1/query.proto",
 }
