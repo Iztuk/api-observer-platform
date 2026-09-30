@@ -65,11 +65,11 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
-		if err := ensureNotRunning(pidPath); err != nil {
+		if err = ensureNotRunning(pidPath); err != nil {
 			return err
 		}
 
-		if err := writePID(pidPath); err != nil {
+		if err = writePID(pidPath); err != nil {
 			return err
 		}
 
@@ -95,7 +95,10 @@ var startCmd = &cobra.Command{
 
 		_, lastBlock, ok := tree.Last()
 		if !ok {
-			return fmt.Errorf("failed to retrieve last block value")
+			lastBlock = indexer.IndexBlock{
+				EndOffset: 0,
+				BlockSize: 100,
+			}
 		}
 
 		return watcher.Watch(ctx, file, lastBlock, tree)

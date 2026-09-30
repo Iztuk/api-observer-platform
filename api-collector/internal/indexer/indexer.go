@@ -38,6 +38,8 @@ func IndexFile(filePath string, blockSize uint32) error {
 
 	blocks := make([]IndexBlock, 0)
 	var block IndexBlock
+
+	var prevLine []byte
 	for {
 		lineStart := offset
 
@@ -47,6 +49,8 @@ func IndexFile(filePath string, blockSize uint32) error {
 			numLines++
 
 			offset += int64(len(lineBytes))
+
+			prevLine = lineBytes
 
 			if numLines == 1 {
 				timestamp, err := ReadTimestamp(lineBytes)
@@ -78,6 +82,18 @@ func IndexFile(filePath string, blockSize uint32) error {
 
 		if readErr != nil {
 			if readErr == io.EOF {
+				if numLines > 0 {
+					timestamp, err := ReadTimestamp(prevLine)
+					if err != nil {
+						return err
+					}
+
+					block.TimestampEnd = timestamp
+					block.EndOffset = offset
+
+					blocks = append(blocks, block)
+				}
+
 				break
 			}
 

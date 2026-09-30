@@ -143,6 +143,33 @@ func (t *BPlusTree[K, V]) Range(
 	return results
 }
 
+func (t *BPlusTree[K, V]) RangeBounds(
+	start K,
+	end K,
+) (first, last IndexBlock, ok bool) {
+	firstValue, found := t.Find(start)
+	if !found {
+		return IndexBlock{}, IndexBlock{}, false
+	}
+
+	lastValue, found := t.Find(end)
+	if !found {
+		return IndexBlock{}, IndexBlock{}, false
+	}
+
+	first, ok = any(firstValue).(IndexBlock)
+	if !ok {
+		return IndexBlock{}, IndexBlock{}, false
+	}
+
+	last, ok = any(lastValue).(IndexBlock)
+	if !ok {
+		return IndexBlock{}, IndexBlock{}, false
+	}
+
+	return first, last, true
+}
+
 func (t *BPlusTree[K, V]) Last() (K, V, bool) {
 	curr := t.root
 

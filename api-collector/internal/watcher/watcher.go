@@ -18,8 +18,6 @@ func Watch(ctx context.Context, filePath string, lastBlock indexer.IndexBlock, t
 	}
 	defer file.Close()
 
-	fmt.Println(lastBlock)
-
 	startOffset := lastBlock.EndOffset
 
 	if _, err := file.Seek(startOffset, io.SeekStart); err != nil {
@@ -76,6 +74,7 @@ func Watch(ctx context.Context, filePath string, lastBlock indexer.IndexBlock, t
 
 					numLines = 0
 				}
+
 			}
 
 			if err != nil {
@@ -85,7 +84,6 @@ func Watch(ctx context.Context, filePath string, lastBlock indexer.IndexBlock, t
 						return ctx.Err()
 					case <-time.After(250 * time.Millisecond):
 						if len(blocks) > 0 {
-							fmt.Println(blocks)
 							if err := indexer.AppendIndexFile(fmt.Sprintf("%s.idx", filePath), blocks); err != nil {
 								return err
 							}
