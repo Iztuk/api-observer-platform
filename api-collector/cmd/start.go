@@ -114,7 +114,7 @@ var startCmd = &cobra.Command{
 
 		grpcListener, err := net.Listen(
 			"tcp",
-			":24899",
+			":24900",
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create gRPC listener: %w", err)

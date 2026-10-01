@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -19,6 +20,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	LogService_Info_FullMethodName  = "/apiobserver.query.v1.LogService/Info"
 	LogService_Query_FullMethodName = "/apiobserver.query.v1.LogService/Query"
 )
 
@@ -26,6 +28,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LogServiceClient interface {
+	Info(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*InfoReply, error)
 	Query(ctx context.Context, in *LogParams, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Log], error)
 }
 
@@ -35,6 +38,16 @@ type logServiceClient struct {
 
 func NewLogServiceClient(cc grpc.ClientConnInterface) LogServiceClient {
 	return &logServiceClient{cc}
+}
+
+func (c *logServiceClient) Info(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*InfoReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InfoReply)
+	err := c.cc.Invoke(ctx, LogService_Info_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *logServiceClient) Query(ctx context.Context, in *LogParams, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Log], error) {
@@ -60,6 +73,7 @@ type LogService_QueryClient = grpc.ServerStreamingClient[Log]
 // All implementations must embed UnimplementedLogServiceServer
 // for forward compatibility.
 type LogServiceServer interface {
+	Info(context.Context, *emptypb.Empty) (*InfoReply, error)
 	Query(*LogParams, grpc.ServerStreamingServer[Log]) error
 	mustEmbedUnimplementedLogServiceServer()
 }
@@ -71,6 +85,9 @@ type LogServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedLogServiceServer struct{}
 
+func (UnimplementedLogServiceServer) Info(context.Context, *emptypb.Empty) (*InfoReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Info not implemented")
+}
 func (UnimplementedLogServiceServer) Query(*LogParams, grpc.ServerStreamingServer[Log]) error {
 	return status.Error(codes.Unimplemented, "method Query not implemented")
 }
@@ -95,6 +112,24 @@ func RegisterLogServiceServer(s grpc.ServiceRegistrar, srv LogServiceServer) {
 	s.RegisterService(&LogService_ServiceDesc, srv)
 }
 
+func _LogService_Info_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LogServiceServer).Info(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LogService_Info_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LogServiceServer).Info(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LogService_Query_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(LogParams)
 	if err := stream.RecvMsg(m); err != nil {
@@ -112,7 +147,12 @@ type LogService_QueryServer = grpc.ServerStreamingServer[Log]
 var LogService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "apiobserver.query.v1.LogService",
 	HandlerType: (*LogServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Info",
+			Handler:    _LogService_Info_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Query",

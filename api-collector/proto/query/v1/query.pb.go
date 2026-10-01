@@ -9,6 +9,7 @@ package queryv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -22,53 +23,48 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type LogType int32
+type InfoReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CollectorId   string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const (
-	LogType_LOG_TYPE_UNSPECIFIED LogType = 0
-	LogType_LOG_TYPE_REQUEST     LogType = 1
-	LogType_LOG_TYPE_RESPONSE    LogType = 2
-)
+func (x *InfoReply) Reset() {
+	*x = InfoReply{}
+	mi := &file_proto_query_v1_query_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
 
-// Enum value maps for LogType.
-var (
-	LogType_name = map[int32]string{
-		0: "LOG_TYPE_UNSPECIFIED",
-		1: "LOG_TYPE_REQUEST",
-		2: "LOG_TYPE_RESPONSE",
+func (x *InfoReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InfoReply) ProtoMessage() {}
+
+func (x *InfoReply) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_query_v1_query_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
 	}
-	LogType_value = map[string]int32{
-		"LOG_TYPE_UNSPECIFIED": 0,
-		"LOG_TYPE_REQUEST":     1,
-		"LOG_TYPE_RESPONSE":    2,
-	}
-)
-
-func (x LogType) Enum() *LogType {
-	p := new(LogType)
-	*p = x
-	return p
+	return mi.MessageOf(x)
 }
 
-func (x LogType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (LogType) Descriptor() protoreflect.EnumDescriptor {
-	return file_proto_query_v1_query_proto_enumTypes[0].Descriptor()
-}
-
-func (LogType) Type() protoreflect.EnumType {
-	return &file_proto_query_v1_query_proto_enumTypes[0]
-}
-
-func (x LogType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use LogType.Descriptor instead.
-func (LogType) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use InfoReply.ProtoReflect.Descriptor instead.
+func (*InfoReply) Descriptor() ([]byte, []int) {
 	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *InfoReply) GetCollectorId() string {
+	if x != nil {
+		return x.CollectorId
+	}
+	return ""
 }
 
 type LogParams struct {
@@ -82,7 +78,7 @@ type LogParams struct {
 
 func (x *LogParams) Reset() {
 	*x = LogParams{}
-	mi := &file_proto_query_v1_query_proto_msgTypes[0]
+	mi := &file_proto_query_v1_query_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -94,7 +90,7 @@ func (x *LogParams) String() string {
 func (*LogParams) ProtoMessage() {}
 
 func (x *LogParams) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_query_v1_query_proto_msgTypes[0]
+	mi := &file_proto_query_v1_query_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -107,7 +103,7 @@ func (x *LogParams) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogParams.ProtoReflect.Descriptor instead.
 func (*LogParams) Descriptor() ([]byte, []int) {
-	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{0}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *LogParams) GetStartDate() *timestamppb.Timestamp {
@@ -144,7 +140,7 @@ type Log struct {
 
 func (x *Log) Reset() {
 	*x = Log{}
-	mi := &file_proto_query_v1_query_proto_msgTypes[1]
+	mi := &file_proto_query_v1_query_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -156,7 +152,7 @@ func (x *Log) String() string {
 func (*Log) ProtoMessage() {}
 
 func (x *Log) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_query_v1_query_proto_msgTypes[1]
+	mi := &file_proto_query_v1_query_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -169,7 +165,7 @@ func (x *Log) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log.ProtoReflect.Descriptor instead.
 func (*Log) Descriptor() ([]byte, []int) {
-	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{1}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Log) GetEvent() isLog_Event {
@@ -224,7 +220,7 @@ type Metadata struct {
 
 func (x *Metadata) Reset() {
 	*x = Metadata{}
-	mi := &file_proto_query_v1_query_proto_msgTypes[2]
+	mi := &file_proto_query_v1_query_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -236,7 +232,7 @@ func (x *Metadata) String() string {
 func (*Metadata) ProtoMessage() {}
 
 func (x *Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_query_v1_query_proto_msgTypes[2]
+	mi := &file_proto_query_v1_query_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -249,7 +245,7 @@ func (x *Metadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metadata.ProtoReflect.Descriptor instead.
 func (*Metadata) Descriptor() ([]byte, []int) {
-	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{2}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Metadata) GetRequestId() string {
@@ -282,7 +278,7 @@ type HeaderValues struct {
 
 func (x *HeaderValues) Reset() {
 	*x = HeaderValues{}
-	mi := &file_proto_query_v1_query_proto_msgTypes[3]
+	mi := &file_proto_query_v1_query_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -294,7 +290,7 @@ func (x *HeaderValues) String() string {
 func (*HeaderValues) ProtoMessage() {}
 
 func (x *HeaderValues) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_query_v1_query_proto_msgTypes[3]
+	mi := &file_proto_query_v1_query_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -307,7 +303,7 @@ func (x *HeaderValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeaderValues.ProtoReflect.Descriptor instead.
 func (*HeaderValues) Descriptor() ([]byte, []int) {
-	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{3}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *HeaderValues) GetValues() []string {
@@ -331,7 +327,7 @@ type Request struct {
 
 func (x *Request) Reset() {
 	*x = Request{}
-	mi := &file_proto_query_v1_query_proto_msgTypes[4]
+	mi := &file_proto_query_v1_query_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +339,7 @@ func (x *Request) String() string {
 func (*Request) ProtoMessage() {}
 
 func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_query_v1_query_proto_msgTypes[4]
+	mi := &file_proto_query_v1_query_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +352,7 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
-	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{4}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Request) GetMethod() string {
@@ -414,7 +410,7 @@ type Response struct {
 
 func (x *Response) Reset() {
 	*x = Response{}
-	mi := &file_proto_query_v1_query_proto_msgTypes[5]
+	mi := &file_proto_query_v1_query_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -426,7 +422,7 @@ func (x *Response) String() string {
 func (*Response) ProtoMessage() {}
 
 func (x *Response) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_query_v1_query_proto_msgTypes[5]
+	mi := &file_proto_query_v1_query_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -439,7 +435,7 @@ func (x *Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Response.ProtoReflect.Descriptor instead.
 func (*Response) Descriptor() ([]byte, []int) {
-	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{5}
+	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Response) GetStatusCode() int32 {
@@ -481,7 +477,9 @@ var File_proto_query_v1_query_proto protoreflect.FileDescriptor
 
 const file_proto_query_v1_query_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/query/v1/query.proto\x12\x14apiobserver.query.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x95\x01\n" +
+	"\x1aproto/query/v1/query.proto\x12\x14apiobserver.query.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\".\n" +
+	"\tInfoReply\x12!\n" +
+	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\"\x95\x01\n" +
 	"\tLogParams\x129\n" +
 	"\n" +
 	"start_date\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tstartDate\x125\n" +
@@ -517,13 +515,10 @@ const file_proto_query_v1_query_proto_rawDesc = "" +
 	"\bmetadata\x18\x05 \x01(\v2\x1e.apiobserver.query.v1.MetadataR\bmetadata\x1a^\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x128\n" +
-	"\x05value\x18\x02 \x01(\v2\".apiobserver.query.v1.HeaderValuesR\x05value:\x028\x01*P\n" +
-	"\aLogType\x12\x18\n" +
-	"\x14LOG_TYPE_UNSPECIFIED\x10\x00\x12\x14\n" +
-	"\x10LOG_TYPE_REQUEST\x10\x01\x12\x15\n" +
-	"\x11LOG_TYPE_RESPONSE\x10\x022S\n" +
+	"\x05value\x18\x02 \x01(\v2\".apiobserver.query.v1.HeaderValuesR\x05value:\x028\x012\x94\x01\n" +
 	"\n" +
-	"LogService\x12E\n" +
+	"LogService\x12?\n" +
+	"\x04Info\x12\x16.google.protobuf.Empty\x1a\x1f.apiobserver.query.v1.InfoReply\x12E\n" +
 	"\x05Query\x12\x1f.apiobserver.query.v1.LogParams\x1a\x19.apiobserver.query.v1.Log0\x01B%Z#api-observer/proto/query/v1;queryv1b\x06proto3"
 
 var (
@@ -538,10 +533,9 @@ func file_proto_query_v1_query_proto_rawDescGZIP() []byte {
 	return file_proto_query_v1_query_proto_rawDescData
 }
 
-var file_proto_query_v1_query_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_proto_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_proto_query_v1_query_proto_goTypes = []any{
-	(LogType)(0),                  // 0: apiobserver.query.v1.LogType
+	(*InfoReply)(nil),             // 0: apiobserver.query.v1.InfoReply
 	(*LogParams)(nil),             // 1: apiobserver.query.v1.LogParams
 	(*Log)(nil),                   // 2: apiobserver.query.v1.Log
 	(*Metadata)(nil),              // 3: apiobserver.query.v1.Metadata
@@ -551,6 +545,7 @@ var file_proto_query_v1_query_proto_goTypes = []any{
 	nil,                           // 7: apiobserver.query.v1.Request.HeadersEntry
 	nil,                           // 8: apiobserver.query.v1.Response.HeadersEntry
 	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),         // 10: google.protobuf.Empty
 }
 var file_proto_query_v1_query_proto_depIdxs = []int32{
 	9,  // 0: apiobserver.query.v1.LogParams.start_date:type_name -> google.protobuf.Timestamp
@@ -564,10 +559,12 @@ var file_proto_query_v1_query_proto_depIdxs = []int32{
 	3,  // 8: apiobserver.query.v1.Response.metadata:type_name -> apiobserver.query.v1.Metadata
 	4,  // 9: apiobserver.query.v1.Request.HeadersEntry.value:type_name -> apiobserver.query.v1.HeaderValues
 	4,  // 10: apiobserver.query.v1.Response.HeadersEntry.value:type_name -> apiobserver.query.v1.HeaderValues
-	1,  // 11: apiobserver.query.v1.LogService.Query:input_type -> apiobserver.query.v1.LogParams
-	2,  // 12: apiobserver.query.v1.LogService.Query:output_type -> apiobserver.query.v1.Log
-	12, // [12:13] is the sub-list for method output_type
-	11, // [11:12] is the sub-list for method input_type
+	10, // 11: apiobserver.query.v1.LogService.Info:input_type -> google.protobuf.Empty
+	1,  // 12: apiobserver.query.v1.LogService.Query:input_type -> apiobserver.query.v1.LogParams
+	0,  // 13: apiobserver.query.v1.LogService.Info:output_type -> apiobserver.query.v1.InfoReply
+	2,  // 14: apiobserver.query.v1.LogService.Query:output_type -> apiobserver.query.v1.Log
+	13, // [13:15] is the sub-list for method output_type
+	11, // [11:13] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name
@@ -578,7 +575,7 @@ func file_proto_query_v1_query_proto_init() {
 	if File_proto_query_v1_query_proto != nil {
 		return
 	}
-	file_proto_query_v1_query_proto_msgTypes[1].OneofWrappers = []any{
+	file_proto_query_v1_query_proto_msgTypes[2].OneofWrappers = []any{
 		(*Log_Request)(nil),
 		(*Log_Response)(nil),
 	}
@@ -587,14 +584,13 @@ func file_proto_query_v1_query_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_query_v1_query_proto_rawDesc), len(file_proto_query_v1_query_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   8,
+			NumEnums:      0,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_proto_query_v1_query_proto_goTypes,
 		DependencyIndexes: file_proto_query_v1_query_proto_depIdxs,
-		EnumInfos:         file_proto_query_v1_query_proto_enumTypes,
 		MessageInfos:      file_proto_query_v1_query_proto_msgTypes,
 	}.Build()
 	File_proto_query_v1_query_proto = out.File

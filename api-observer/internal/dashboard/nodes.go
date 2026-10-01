@@ -41,7 +41,7 @@ func (h *Handler) AddNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Nodes.Add(name, addr); err != nil {
+	if err := h.Nodes.Add(r.Context(), name, addr); err != nil {
 		http.Error(w, "failed to add node", http.StatusInternalServerError)
 		return
 	}
@@ -62,29 +62,29 @@ func (h *Handler) AddNode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteNode(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
+	nodeId := r.FormValue("delete-node-id")
 
 	found := slices.ContainsFunc(
 		h.Nodes.List(),
 		func(node *nodes.Node) bool {
-			return node.Name == name
+			return node.ID == nodeId
 		},
 	)
 
 	if !found {
-		http.Error(w, fmt.Sprintf("node '%s' not found", name), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("node '%s' not found", nodeId), http.StatusNotFound)
 		return
 	}
 
-	if err := h.Nodes.Remove(name); err != nil {
-		http.Error(w, fmt.Sprintf("failed to remove node '%s'", name), http.StatusInternalServerError)
+	if err := h.Nodes.Remove(nodeId); err != nil {
+		http.Error(w, fmt.Sprintf("failed to remove node '%s'", nodeId), http.StatusInternalServerError)
 		return
 	}
 
 	h.Config.Nodes = convertNodesToConfigNodes(h.Nodes.List())
 	if err := config.SaveConfigurationFile(h.Config); err != nil {
 		http.Error(w, "failed to save changes", http.StatusInternalServerError)
-		h.Nodes.Remove(name)
+		h.Nodes.Remove(nodeId)
 		return
 	}
 

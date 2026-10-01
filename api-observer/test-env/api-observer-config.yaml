@@ -6,11 +6,5 @@ dashboard_port: :8080
 queue_size: 1000
 worker_count: 5
 nodes:
-  - name: node-1
-    addr: localhost:24900
-
-  - name: node-2
-    addr: localhost:24901
-
-  - name: node-3
-    addr: localhost:24902
+    - name: node-1
+      addr: localhost:24900

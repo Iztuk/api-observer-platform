@@ -2,6 +2,7 @@
 package nodes
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -9,9 +10,11 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Node struct {
+	ID     string
 	Name   string
 	Addr   string
 	Conn   *grpc.ClientConn
@@ -30,7 +33,8 @@ func NewNodeManager() *NodeManager {
 }
 
 func (m *NodeManager) Add(
-	name string,
+	ctx context.Context,
+	name,
 	addr string,
 ) error {
 	conn, err := grpc.NewClient(
@@ -42,25 +46,54 @@ func (m *NodeManager) Add(
 	if err != nil {
 		return fmt.Errorf(
 			"failed to create client for node %q: %w",
-			name,
+			addr,
 			err,
 		)
 	}
 
+	client := queryv1.NewLogServiceClient(conn)
+
+	info, err := client.Info(
+		ctx,
+		&emptypb.Empty{},
+	)
+	if err != nil {
+		_ = conn.Close()
+
+		return fmt.Errorf(
+			"failed to get collector info from %q: %w",
+			addr,
+			err,
+		)
+	}
+
+	if info.CollectorId == "" {
+		_ = conn.Close()
+
+		return fmt.Errorf(
+			"collector at %q returned an empty collector ID",
+			addr,
+		)
+	}
+
 	node := &Node{
-		Name: name,
-		Addr: addr,
-		Conn: conn, Client: queryv1.NewLogServiceClient(conn),
+		ID:     info.CollectorId,
+		Name:   name,
+		Addr:   addr,
+		Conn:   conn,
+		Client: client,
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if existing, ok := m.nodes[name]; ok {
-		existing.Conn.Close()
+	if existing, ok := m.nodes[node.ID]; ok {
+		if existing.Conn != nil {
+			_ = existing.Conn.Close()
+		}
 	}
 
-	m.nodes[name] = node
+	m.nodes[node.ID] = node
 
 	return nil
 }

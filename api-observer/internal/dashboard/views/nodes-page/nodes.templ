@@ -9,12 +9,9 @@ import (
 templ NodesPage(title string, nodes []*nodes.Node) {
 	@views.Layout(title) {
 		<link rel="stylesheet" href="/static/css/nodes.css"/>
-
 		@NodesPageContent(nodes)
-
 		@AddNodeModal()
 		@DeleteNodeModal()
-
 		@FormValidationScript()
 		@DeleteNodeModalScript()
 	}
@@ -24,12 +21,10 @@ templ NodesPageContent(nodes []*nodes.Node) {
 	<div class="nodes-page">
 		<header class="nodes-page-header">
 			<h2>Nodes</h2>
-
 			<p>
 				Review the nodes registered to API Observer
 			</p>
 		</header>
-
 		<section class="nodes-section nodes-actions">
 			<button
 				type="button"
@@ -37,7 +32,6 @@ templ NodesPageContent(nodes []*nodes.Node) {
 			>
 				Add Node
 			</button>
-
 			<button
 				type="button"
 				onclick="
@@ -48,7 +42,6 @@ templ NodesPageContent(nodes []*nodes.Node) {
 				Delete Node
 			</button>
 		</section>
-
 		<section
 			id="nodes-section"
 			class="nodes-section"
@@ -61,12 +54,10 @@ templ NodesPageContent(nodes []*nodes.Node) {
 templ NodesList(nodes []*nodes.Node) {
 	<div class="nodes-list-header">
 		<h3>Registered Nodes</h3>
-
 		<span class="rules-count">
 			{ fmt.Sprintf("%d nodes", len(nodes)) }
 		</span>
 	</div>
-
 	<div
 		class="nodes-workspace"
 		id="nodes-workspace"
@@ -83,11 +74,17 @@ templ NodesList(nodes []*nodes.Node) {
 				</div>
 			} else {
 				for _, node := range nodes {
-					<div data-node-name={ node.Name }>
-						<p>
+					<div
+						class="node-item"
+						data-node-id={ node.ID }
+						data-node-name={ node.Name }
+					>
+						<p class="node-name">
 							{ node.Name }
 						</p>
-
+						<p class="node-id">
+							{ node.ID }
+						</p>
 						<p class="node-addr">
 							{ node.Addr }
 						</p>
@@ -117,12 +114,10 @@ templ AddNodeModal() {
 			<header>
 				<h2>Add Node</h2>
 			</header>
-
 			<div class="modal-form-field">
 				<label for="add-node-name">
 					Name
 				</label>
-
 				<input
 					type="text"
 					name="name"
@@ -130,12 +125,10 @@ templ AddNodeModal() {
 					required
 				/>
 			</div>
-
 			<div class="modal-form-field">
 				<label for="add-node-addr">
 					Address
 				</label>
-
 				<input
 					type="text"
 					name="addr"
@@ -143,7 +136,6 @@ templ AddNodeModal() {
 					required
 				/>
 			</div>
-
 			<div>
 				<button
 					type="submit"
@@ -152,7 +144,6 @@ templ AddNodeModal() {
 				>
 					Add
 				</button>
-
 				<button
 					type="button"
 					onclick="document.getElementById('addNodeModal').close()"
@@ -183,14 +174,12 @@ templ DeleteNodeModal() {
 			<header>
 				<h2>Delete Node</h2>
 			</header>
-
 			<div class="modal-form-field">
 				<label for="delete-node-dropdown">
 					Node
 				</label>
-
 				<select
-					name="name"
+					name="delete-node-id"
 					id="delete-node-dropdown"
 					required
 				>
@@ -199,7 +188,6 @@ templ DeleteNodeModal() {
 					</option>
 				</select>
 			</div>
-
 			<div>
 				<button
 					type="submit"
@@ -208,7 +196,6 @@ templ DeleteNodeModal() {
 				>
 					Delete
 				</button>
-
 				<button
 					type="button"
 					onclick="document.getElementById('deleteNodeModal').close()"
@@ -223,14 +210,10 @@ templ DeleteNodeModal() {
 templ FormValidationScript() {
 	<script>
 		(() => {
-			const forms = document.querySelectorAll(
-				"[data-validate-form]"
-			);
+			const forms = document.querySelectorAll("[data-validate-form]");
 
 			forms.forEach((form) => {
-				const submitButton = form.querySelector(
-					"[data-submit-button]"
-				);
+				const submitButton = form.querySelector("[data-submit-button]");
 
 				if (!submitButton) {
 					return;
@@ -240,24 +223,13 @@ templ FormValidationScript() {
 					submitButton.disabled = !form.checkValidity();
 				};
 
-				form.addEventListener(
-					"input",
-					checkValidity,
-				);
+				form.addEventListener("input", checkValidity);
 
-				form.addEventListener(
-					"change",
-					checkValidity,
-				);
+				form.addEventListener("change", checkValidity);
 
-				form.addEventListener(
-					"reset",
-					() => {
-						requestAnimationFrame(
-							checkValidity
-						);
-					},
-				);
+				form.addEventListener("reset", () => {
+					requestAnimationFrame(checkValidity);
+				});
 
 				checkValidity();
 			});
@@ -268,13 +240,9 @@ templ FormValidationScript() {
 templ DeleteNodeModalScript() {
 	<script>
 		function populateDeleteNodeDropdown() {
-			const nodesList = document.getElementById(
-				"nodes-list"
-			);
+			const nodesList = document.getElementById("nodes-list");
 
-			const dropdown = document.getElementById(
-				"delete-node-dropdown"
-			);
+			const dropdown = document.getElementById("delete-node-dropdown");
 
 			if (!nodesList || !dropdown) {
 				return;
@@ -289,9 +257,7 @@ templ DeleteNodeModalScript() {
 			*/
 			dropdown.innerHTML = "";
 
-			const placeholder = document.createElement(
-				"option"
-			);
+			const placeholder = document.createElement("option");
 
 			placeholder.value = "";
 			placeholder.textContent = "Select Node";
@@ -306,21 +272,21 @@ templ DeleteNodeModalScript() {
 				dialog was opened.
 			*/
 			const nodes = nodesList.querySelectorAll(
-				"[data-node-name]"
+				"[data-node-id]",
+				"[data-node-name]",
 			);
 
 			nodes.forEach((node) => {
+				const id = node.dataset.nodeId;
 				const name = node.dataset.nodeName;
 
 				if (!name) {
 					return;
 				}
 
-				const option = document.createElement(
-					"option"
-				);
+				const option = document.createElement("option");
 
-				option.value = name;
+				option.value = id;
 				option.textContent = name;
 
 				dropdown.append(option);
@@ -332,12 +298,9 @@ templ DeleteNodeModalScript() {
 				a change event to update form validation.
 			*/
 			dropdown.dispatchEvent(
-				new Event(
-					"change",
-					{
-						bubbles: true,
-					},
-				),
+				new Event("change", {
+					bubbles: true,
+				}),
 			);
 		}
 	</script>

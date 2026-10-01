@@ -5,10 +5,13 @@ import (
 	"api-collector/internal/indexer"
 	queryv1 "api-collector/proto/query/v1"
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"time"
+
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type Server struct {
@@ -29,6 +32,15 @@ func NewServer(
 		tree:        tree,
 		collectorID: collectorID,
 	}
+}
+
+func (s *Server) Info(
+	ctx context.Context,
+	req *emptypb.Empty,
+) (*queryv1.InfoReply, error) {
+	return &queryv1.InfoReply{
+		CollectorId: s.collectorID,
+	}, nil
 }
 
 func (s *Server) Query(
@@ -272,28 +284,13 @@ func (s *Server) streamLogs(
 				response.Metadata.Source = s.collectorID
 			}
 
-			/*
-				The ModSecurity unique_id is stored as RequestId
-				by DecodeModSecLog(), so use it for the outer
-				Log IDs as well.
-			*/
-			requestID := ""
-
-			if request.Metadata != nil {
-				requestID = request.Metadata.RequestId
-			}
-
 			requestLog := &queryv1.Log{
-				Id: requestID + ":request",
-
 				Event: &queryv1.Log_Request{
 					Request: request,
 				},
 			}
 
 			responseLog := &queryv1.Log{
-				Id: requestID + ":response",
-
 				Event: &queryv1.Log_Response{
 					Response: response,
 				},

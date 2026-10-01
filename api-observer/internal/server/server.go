@@ -132,7 +132,7 @@ func RunServer(ctx context.Context, background bool) error {
 	nm := nodes.NewNodeManager()
 
 	for _, node := range cfg.Nodes {
-		if err := nm.Add(node.Name, node.Addr); err != nil {
+		if err := nm.Add(ctx, node.Name, node.Addr); err != nil {
 			return fmt.Errorf("failed to add node %q: %w", node.Name, err)
 		}
 	}

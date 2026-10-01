@@ -186,7 +186,8 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.node-addr {
+.node-addr,
+.node-id {
   font-weight: normal !important;
   color: var(--muted-text-color);
 }
