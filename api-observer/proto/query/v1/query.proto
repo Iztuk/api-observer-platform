@@ -24,9 +24,10 @@ message LogParams {
 }
 
 message Log {
+  int64 cursor = 1;
   oneof event {
-    Request request = 1;
-    Response response = 2;
+    Request request = 2;
+    Response response = 3;
   }
 }
 

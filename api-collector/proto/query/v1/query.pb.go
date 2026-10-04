@@ -128,7 +128,8 @@ func (x *LogParams) GetCursor() int64 {
 }
 
 type Log struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Cursor int64                  `protobuf:"varint,1,opt,name=cursor,proto3" json:"cursor,omitempty"`
 	// Types that are valid to be assigned to Event:
 	//
 	//	*Log_Request
@@ -168,6 +169,13 @@ func (*Log) Descriptor() ([]byte, []int) {
 	return file_proto_query_v1_query_proto_rawDescGZIP(), []int{2}
 }
 
+func (x *Log) GetCursor() int64 {
+	if x != nil {
+		return x.Cursor
+	}
+	return 0
+}
+
 func (x *Log) GetEvent() isLog_Event {
 	if x != nil {
 		return x.Event
@@ -198,11 +206,11 @@ type isLog_Event interface {
 }
 
 type Log_Request struct {
-	Request *Request `protobuf:"bytes,1,opt,name=request,proto3,oneof"`
+	Request *Request `protobuf:"bytes,2,opt,name=request,proto3,oneof"`
 }
 
 type Log_Response struct {
-	Response *Response `protobuf:"bytes,2,opt,name=response,proto3,oneof"`
+	Response *Response `protobuf:"bytes,3,opt,name=response,proto3,oneof"`
 }
 
 func (*Log_Request) isLog_Event() {}
@@ -484,10 +492,11 @@ const file_proto_query_v1_query_proto_rawDesc = "" +
 	"\n" +
 	"start_date\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tstartDate\x125\n" +
 	"\bend_date\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\aendDate\x12\x16\n" +
-	"\x06cursor\x18\x03 \x01(\x03R\x06cursor\"\x87\x01\n" +
-	"\x03Log\x129\n" +
-	"\arequest\x18\x01 \x01(\v2\x1d.apiobserver.query.v1.RequestH\x00R\arequest\x12<\n" +
-	"\bresponse\x18\x02 \x01(\v2\x1e.apiobserver.query.v1.ResponseH\x00R\bresponseB\a\n" +
+	"\x06cursor\x18\x03 \x01(\x03R\x06cursor\"\x9f\x01\n" +
+	"\x03Log\x12\x16\n" +
+	"\x06cursor\x18\x01 \x01(\x03R\x06cursor\x129\n" +
+	"\arequest\x18\x02 \x01(\v2\x1d.apiobserver.query.v1.RequestH\x00R\arequest\x12<\n" +
+	"\bresponse\x18\x03 \x01(\v2\x1e.apiobserver.query.v1.ResponseH\x00R\bresponseB\a\n" +
 	"\x05event\"{\n" +
 	"\bMetadata\x12\x1d\n" +
 	"\n" +

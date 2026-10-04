@@ -227,12 +227,6 @@ func (s *Server) streamLogs(
 				break
 			}
 
-			/*
-				Read the timestamp before doing the full decode.
-
-				The sparse block may contain records outside the
-				exact requested time range.
-			*/
 			timestamp, err := indexer.ReadTimestamp(
 				lineBytes,
 			)
@@ -257,10 +251,6 @@ func (s *Server) streamLogs(
 				break
 			}
 
-			/*
-				One ModSecurity transaction contains both the
-				HTTP request and HTTP response.
-			*/
 			request, response, err := DecodeModSecLog(
 				lineBytes,
 				s.collectorID,
@@ -273,24 +263,19 @@ func (s *Server) streamLogs(
 				)
 			}
 
-			/*
-				Identify the Collector that provided these logs.
-			*/
-			if request.Metadata != nil {
-				request.Metadata.Source = s.collectorID
-			}
-
-			if response.Metadata != nil {
-				response.Metadata.Source = s.collectorID
-			}
+			nextCursor := offset
 
 			requestLog := &queryv1.Log{
+				Cursor: nextCursor,
+
 				Event: &queryv1.Log_Request{
 					Request: request,
 				},
 			}
 
 			responseLog := &queryv1.Log{
+				Cursor: nextCursor,
+
 				Event: &queryv1.Log_Response{
 					Response: response,
 				},

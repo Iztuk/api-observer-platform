@@ -1,20 +1,57 @@
 package explorer
 
-import "api-observer/internal/dashboard/views"
+import (
+	"api-observer/internal/dashboard/views"
+	"api-observer/internal/nodes"
+	queryv1 "api-observer/proto/query/v1"
+	"fmt"
+	"time"
+)
 
-templ ExplorerPage(title, query, start, end string) {
+templ ExplorerPage(
+	title string,
+	query string,
+	start string,
+	end string,
+	selectedNode string,
+	limit string,
+	nodeList []*nodes.Node,
+	logs []*queryv1.Log,
+	nextCursor int64,
+	hasMore bool,
+) {
 	@views.Layout(title) {
 		<link rel="stylesheet" href="/static/css/explorer.css"/>
-		@ExplorerPageContent(query, start, end)
+		@ExplorerPageContent(
+			query,
+			start,
+			end,
+			selectedNode,
+			limit,
+			nodeList,
+			logs,
+			nextCursor,
+			hasMore,
+		)
 	}
 }
 
-templ ExplorerPageContent(query, start, end string) {
+templ ExplorerPageContent(
+	query string,
+	start string,
+	end string,
+	selectedNode string,
+	limit string,
+	nodeList []*nodes.Node,
+	logs []*queryv1.Log,
+	nextCursor int64,
+	hasMore bool,
+) {
 	<div class="explorer-page">
-		<!-- Search and Filters -->
 		<form
+			id="explorer-form"
 			class="explorer-form"
-			action="/"
+			action="/explorer"
 			method="get"
 		>
 			<div class="explorer-search">
@@ -44,12 +81,16 @@ templ ExplorerPageContent(query, start, end string) {
 						aria-hidden="true"
 					>
 						<circle cx="11" cy="11" r="8"></circle>
-						<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+						<line
+							x1="21"
+							y1="21"
+							x2="16.65"
+							y2="16.65"
+						></line>
 					</svg>
 					<span>Search</span>
 				</button>
 			</div>
-			<!-- Advanced Settings -->
 			<details class="explorer-advanced">
 				<summary>
 					<span>Advanced Settings</span>
@@ -91,17 +132,70 @@ templ ExplorerPageContent(query, start, end string) {
 							value={ end }
 						/>
 					</div>
+					<div class="explorer-filter">
+						<label for="explorer-node">
+							Node
+						</label>
+						<select
+							id="explorer-node"
+							name="node"
+						>
+							<option value="">
+								Select a node
+							</option>
+							for _, node := range nodeList {
+								<option
+									value={ node.ID }
+									selected?={ node.ID == selectedNode }
+								>
+									{ node.Name }
+								</option>
+							}
+						</select>
+					</div>
+					<div class="explorer-filter">
+						<label for="explorer-limit">
+							Limit
+						</label>
+						<select
+							id="explorer-limit"
+							name="limit"
+						>
+							<option
+								value="50"
+								selected?={ limit == "50" }
+							>
+								50
+							</option>
+							<option
+								value="100"
+								selected?={ limit == "100" }
+							>
+								100
+							</option>
+							<option
+								value="250"
+								selected?={ limit == "250" }
+							>
+								250
+							</option>
+							<option
+								value="500"
+								selected?={ limit == "500" }
+							>
+								500
+							</option>
+						</select>
+					</div>
 				</div>
 			</details>
 		</form>
-		<!-- Results -->
 		<section class="explorer-results">
 			<div class="explorer-table-container">
 				<table class="explorer-table">
 					<thead>
 						<tr>
 							<th>Timestamp</th>
-							<th>Host</th>
 							<th>Type</th>
 							<th>Method</th>
 							<th>Path</th>
@@ -109,34 +203,166 @@ templ ExplorerPageContent(query, start, end string) {
 							<th>Findings</th>
 						</tr>
 					</thead>
-					<tbody>
-						<tr>
-							<td colspan="7" class="explorer-empty">
-								End of logs
-							</td>
-						</tr>
+					<tbody id="explorer-log-body">
+						if selectedNode == "" {
+							<tr>
+								<td
+									colspan="7"
+									class="explorer-empty"
+								>
+									Select a node and run a search.
+								</td>
+							</tr>
+						} else {
+							@ExplorerLogRows(
+								logs,
+								nextCursor,
+								hasMore,
+							)
+						}
 					</tbody>
 				</table>
 			</div>
 		</section>
 	</div>
-	<div>
-		Mem: <span id="mem"></span>
-		<br/>
-		CPU: <span id="cpu"></span>
-	</div>
-	<script type="text/javascript">
-		const eventSrc = new EventSource("http://127.0.0.1:8080/logs");
+}
 
-		const mem = document.getElementById("mem");
-		const cpu = document.getElementById("cpu");
+templ ExplorerLogRows(
+	logs []*queryv1.Log,
+	nextCursor int64,
+	hasMore bool,
+) {
+	if len(logs) == 0 {
+		<tr>
+			<td
+				colspan="7"
+				class="explorer-empty"
+			>
+				No logs found.
+			</td>
+		</tr>
+	} else {
+		for i, log := range logs {
+			@ExplorerLogRow(
+				log,
+				i == len(logs)-1,
+				nextCursor,
+				hasMore,
+			)
+		}
+		if !hasMore {
+			<tr>
+				<td
+					colspan="7"
+					class="explorer-empty"
+				>
+					End of logs
+				</td>
+			</tr>
+		}
+	}
+}
 
-		eventSrc.addEventListener("mem", (event) => {
-			mem.textContent = event.data;
-		});
+templ ExplorerLogRow(
+	log *queryv1.Log,
+	isLast bool,
+	nextCursor int64,
+	hasMore bool,
+) {
+	switch event := log.Event.(type) {
+		case *queryv1.Log_Request:
+			if isLast && hasMore {
+				<tr
+					hx-get="/explorer/logs"
+					hx-trigger="revealed once"
+					hx-target="this"
+					hx-swap="afterend"
+					hx-include="#explorer-form"
+					hx-vals={ fmt.Sprintf(
+						`{"cursor":"%d"}`,
+						nextCursor,
+					) }
+				>
+					@ExplorerRequestColumns(event.Request)
+				</tr>
+			} else {
+				<tr>
+					@ExplorerRequestColumns(event.Request)
+				</tr>
+			}
+		case *queryv1.Log_Response:
+			if isLast && hasMore {
+				<tr
+					hx-get="/logs"
+					hx-trigger="revealed once"
+					hx-target="this"
+					hx-swap="afterend"
+					hx-include="#explorer-form"
+					hx-vals={ fmt.Sprintf(
+						`{"cursor":"%d"}`,
+						nextCursor,
+					) }
+				>
+					@ExplorerResponseColumns(event.Response)
+				</tr>
+			} else {
+				<tr>
+					@ExplorerResponseColumns(event.Response)
+				</tr>
+			}
+	}
+}
 
-		eventSrc.addEventListener("cpu", (event) => {
-			cpu.textContent = event.data;
-		});
-	</script>
+templ ExplorerRequestColumns(
+	request *queryv1.Request,
+) {
+	<td>
+		if request.Metadata != nil &&
+			request.Metadata.Timestamp != nil {
+			{ 
+				request.Metadata.Timestamp.
+					AsTime().
+                    In(time.Local).
+					Format("2006-01-02 15:04:05") }
+		}
+	</td>
+	<td>
+		Request
+	</td>
+	<td>
+		{ request.Method }
+	</td>
+	<td>
+		{ request.Url }
+	</td>
+	<td></td>
+	<td></td>
+}
+
+templ ExplorerResponseColumns(
+	response *queryv1.Response,
+) {
+	<td>
+		if response.Metadata != nil &&
+			response.Metadata.Timestamp != nil {
+			{ 
+				response.Metadata.Timestamp.
+					AsTime().
+                    In(time.Local).
+					Format("2006-01-02 15:04:05") }
+		}
+	</td>
+	<td>
+		Response
+	</td>
+	<td></td>
+	<td></td>
+	<td>
+		{ 
+			fmt.Sprintf(
+				"%d",
+				response.StatusCode,
+			) }
+	</td>
+	<td></td>
 }

@@ -207,7 +207,8 @@
   font-weight: 500;
 }
 
-.explorer-filter input {
+.explorer-filter input,
+.explorer-filter select {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -224,7 +225,8 @@
   font-size: 0.875rem;
 }
 
-.explorer-filter input:focus {
+.explorer-filter input:focus,
+.explorer-filter select:focus {
   outline: 2px solid var(--text-color);
   outline-offset: 1px;
 }
