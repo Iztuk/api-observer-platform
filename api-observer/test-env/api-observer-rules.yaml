@@ -1,5 +1,88 @@
 rules:
-  # WARNING: unsupported variable type: XML
+  nginx-root-host:
+    scope:
+      - request
+    match:
+      mode: all
+      conditions:
+        - target: header
+          key: Host
+          operator: string_equal
+          value: localhost:8080
+    finding:
+      title: Nginx host detected
+      message: The request was sent to localhost:8080.
+      severity: info
+
+  nginx-root-method:
+    scope:
+      - request
+    match:
+      mode: all
+      conditions:
+        - target: method
+          operator: string_equal
+          value: GET
+    finding:
+      title: GET request detected
+      message: A GET request was observed.
+      severity: info
+
+  nginx-root-path:
+    scope:
+      - request
+    match:
+      mode: all
+      conditions:
+        - target: path
+          operator: string_equal
+          value: /
+    finding:
+      title: Root path accessed
+      message: The root path was accessed.
+      severity: info
+
+  nginx-root-combined:
+    scope:
+      - request
+    match:
+      mode: all
+      conditions:
+        - target: method
+          operator: string_equal
+          value: GET
+
+        - target: path
+          operator: string_equal
+          value: /
+
+        - target: header
+          key: Host
+          operator: string_equal
+          value: localhost:8080
+    finding:
+      title: Nginx root request detected
+      message: A GET request to the nginx root endpoint was detected.
+      severity: info
+
+  nginx-curl-request:
+    scope:
+      - request
+    match:
+      mode: all
+      conditions:
+        - target: header
+          key: User-Agent
+          operator: string_equal
+          value: curl/8.20.0
+
+        - target: path
+          operator: string_equal
+          value: /
+    finding:
+      title: Curl request to root detected
+      message: Curl accessed the nginx root endpoint.
+      severity: info
   # WARNING: unsupported variable type: XML
   crs-rule-942100:
     disabled: false

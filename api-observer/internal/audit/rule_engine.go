@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/corazawaf/libinjection-go"
-	"github.com/google/uuid"
 )
 
 func (rs *RuleSet) Evaluate(j Job) ([]Finding, error) {
@@ -20,23 +19,15 @@ func (rs *RuleSet) Evaluate(j Job) ([]Finding, error) {
 		}
 
 		if rs.evaluateRule(rule, j) {
-			reqID := j.Request.Metadata.RequestID
-			src := j.Request.Metadata.Source
-			if j.Type == JobTypeResponse {
-				reqID = j.Response.Metadata.RequestID
-				src = j.Response.Metadata.Source
-			}
-
 			findings = append(findings, Finding{
-				ID:       uuid.New(),
 				Title:    rule.Finding.Title,
 				Message:  rule.Finding.Message,
 				Severity: rule.Finding.Severity,
 				Tags:     rule.Finding.Tags,
 
-				Metadata: Metadata{
-					RequestID: reqID,
-					Source:    src,
+				Metadata: FindingMetadata{
+					Request:  j.Request,
+					Response: j.Response,
 				},
 				ProcessedAt: time.Now().UTC().Format(time.RFC3339Nano),
 			})

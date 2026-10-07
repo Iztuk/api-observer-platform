@@ -12,13 +12,15 @@ type Handler struct {
 	RuleSet *audit.RuleSet
 	Nodes   *nodes.NodeManager
 	Config  *config.Config
+	Queue   *audit.Queue
 }
 
-func NewHandler(rs *audit.RuleSet, nm *nodes.NodeManager, cfg *config.Config) *Handler {
+func NewHandler(rs *audit.RuleSet, nm *nodes.NodeManager, cfg *config.Config, queue *audit.Queue) *Handler {
 	return &Handler{
 		RuleSet: rs,
 		Nodes:   nm,
 		Config:  cfg,
+		Queue:   queue,
 	}
 }
 

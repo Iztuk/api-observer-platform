@@ -6,19 +6,21 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-
-	"github.com/google/uuid"
 )
 
 type Finding struct {
-	ID       uuid.UUID
-	Title    string
-	Message  string
-	Severity string
-	Tags     []string
+	Title    string   `json:"title"`
+	Message  string   `json:"message"`
+	Severity string   `json:"severity"`
+	Tags     []string `json:"tags"`
 
-	Metadata    Metadata
-	ProcessedAt string
+	Metadata    FindingMetadata `json:"metadata"`
+	ProcessedAt string          `json:"processed_at"`
+}
+
+type FindingMetadata struct {
+	Request  *RequestJob  `json:"request,omitempty"`
+	Response *ResponseJob `json:"response,omitempty"`
 }
 
 type Metadata struct {

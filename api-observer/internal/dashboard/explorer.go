@@ -1,12 +1,15 @@
 package dashboard
 
 import (
+	"api-observer/internal/audit"
 	"api-observer/internal/dashboard/views/explorer"
+	"api-observer/internal/query"
 	queryv1 "api-observer/proto/query/v1"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -51,7 +54,7 @@ func (h *Handler) ExplorerPage(
 	nodeList := h.Nodes.List()
 
 	var (
-		logs       []*queryv1.Log
+		logs       []query.LogItem
 		nextCursor int64
 		hasMore    bool
 	)
@@ -73,7 +76,6 @@ func (h *Handler) ExplorerPage(
 			return
 		}
 
-		// TODO: Add the query string to streamLogs and filter out logs that are not needed.
 		logs, nextCursor, hasMore, err = streamLogs(
 			r.Context(),
 			node.Client,
@@ -96,7 +98,6 @@ func (h *Handler) ExplorerPage(
 			return
 		}
 
-		_ = params.Query
 	}
 
 	if err := explorer.ExplorerPage(
@@ -221,13 +222,6 @@ func parseExplorerParams(
 		Limit: defaultExplorerLimit,
 	}
 
-	/*
-		Cursor.
-
-		The normal /explorer request usually has no cursor.
-
-		HTMX infinite-scroll requests will provide one.
-	*/
 	cursorString := queries.Get("cursor")
 
 	if cursorString != "" {
@@ -246,9 +240,6 @@ func parseExplorerParams(
 		params.Cursor = cursor
 	}
 
-	/*
-		Limit.
-	*/
 	if params.LimitString == "" {
 		params.LimitString = strconv.Itoa(
 			defaultExplorerLimit,
@@ -267,12 +258,6 @@ func parseExplorerParams(
 		params.Limit = limit
 	}
 
-	/*
-		Default to the most recent hour.
-
-		These strings are also passed back to the datetime-local
-		inputs so the form always reflects the active query.
-	*/
 	now := time.Now()
 
 	if params.EndString == "" {
@@ -338,12 +323,24 @@ func streamLogs(
 	startCursor int64,
 	limit int,
 ) (
-	[]*queryv1.Log,
+	[]query.LogItem,
 	int64,
 	bool,
 	error,
 ) {
-	queryCtx, cancel := context.WithCancel(ctx)
+	expr, err := query.ParseQuery(
+		queryString,
+	)
+	if err != nil {
+		return nil,
+			startCursor,
+			false,
+			err
+	}
+
+	queryCtx, cancel := context.WithCancel(
+		ctx,
+	)
 	defer cancel()
 
 	stream, err := client.Query(
@@ -365,13 +362,14 @@ func streamLogs(
 	}
 
 	logs := make(
-		[]*queryv1.Log,
+		[]query.LogItem,
 		0,
 		limit,
 	)
 
 	nextCursor := startCursor
 
+	probing := false
 	for {
 		logRecord, err := stream.Recv()
 
@@ -392,29 +390,60 @@ func streamLogs(
 				)
 		}
 
-		// TODO: Filter the streamed data using the query engine before appending to logs
+		if err != nil {
+			return logs,
+				nextCursor,
+				false,
+				fmt.Errorf(
+					"an error occurred while evaluating job: %w",
+					err,
+				)
+		}
 
-		logs = append(
-			logs,
-			logRecord,
+		item := query.LogItem{
+			Log: logRecord,
+		}
+
+		matches, err := query.EvaluateExpression(
+			queryString,
+			expr,
+			item,
 		)
+		if err != nil {
+			return logs,
+				nextCursor,
+				false,
+				fmt.Errorf(
+					"failed to evaluate log query: %w",
+					err,
+				)
+		}
+
+		if probing && matches {
+			cancel()
+
+			return logs,
+				nextCursor,
+				true,
+				nil
+		}
+
+		if !probing && matches {
+			logs = append(
+				logs,
+				item,
+			)
+		}
 
 		switch logRecord.Event.(type) {
 		case *queryv1.Log_Response:
 			nextCursor = logRecord.Cursor
-		}
 
-		if limit > 0 &&
-			len(logs) >= limit {
+			if !probing &&
+				limit > 0 &&
+				len(logs) >= limit {
 
-			switch logRecord.Event.(type) {
-			case *queryv1.Log_Response:
-				cancel()
-
-				return logs,
-					nextCursor,
-					true,
-					nil
+				probing = true
 			}
 		}
 	}
@@ -423,10 +452,6 @@ func streamLogs(
 func parseExplorerTime(
 	value string,
 ) (time.Time, error) {
-	/*
-		Allow RFC3339 so this endpoint can also be called
-		manually or by non-browser clients.
-	*/
 	if parsed, err := time.Parse(
 		time.RFC3339,
 		value,
@@ -434,14 +459,6 @@ func parseExplorerTime(
 		return parsed, nil
 	}
 
-	/*
-		HTML datetime-local submits values like:
-
-			2026-09-30T19:18
-
-		There is no timezone encoded by datetime-local, so use
-		the server's local timezone.
-	*/
 	parsed, err := time.ParseInLocation(
 		explorerDateTimeLayout,
 		value,
@@ -457,4 +474,125 @@ func parseExplorerTime(
 	}
 
 	return parsed, nil
+}
+
+func logToJob(
+	logRecord *queryv1.Log,
+) (audit.Job, error) {
+	if logRecord == nil {
+		return audit.Job{},
+			fmt.Errorf("log record is nil")
+	}
+
+	switch event := logRecord.Event.(type) {
+	case *queryv1.Log_Request:
+		if event.Request == nil {
+			return audit.Job{},
+				fmt.Errorf("request is nil")
+		}
+
+		request := event.Request
+
+		requestURL, err := url.Parse(
+			request.Url,
+		)
+		if err != nil {
+			return audit.Job{},
+				fmt.Errorf(
+					"failed to parse request URL: %w",
+					err,
+				)
+		}
+
+		job := audit.Job{
+			Request: &audit.RequestJob{
+				Method: request.Method,
+				URL:    requestURL,
+
+				Header: toHTTPHeader(
+					request.Headers,
+				),
+
+				Body: request.Body,
+
+				ContentLength: request.ContentLength,
+			},
+		}
+
+		if request.Metadata != nil {
+			job.Request.Metadata = audit.Metadata{
+				RequestID: request.Metadata.RequestId,
+				Source:    request.Metadata.Source,
+			}
+
+			if request.Metadata.Timestamp != nil {
+				job.Request.Metadata.Timestamp =
+					request.Metadata.Timestamp.
+						AsTime().
+						Format(time.RFC3339Nano)
+			}
+		}
+
+		return job, nil
+
+	case *queryv1.Log_Response:
+		if event.Response == nil {
+			return audit.Job{},
+				fmt.Errorf("response is nil")
+		}
+
+		response := event.Response
+
+		job := audit.Job{
+			Response: &audit.ResponseJob{
+				StatusCode: int(
+					response.StatusCode,
+				),
+
+				Header: toHTTPHeader(
+					response.Headers,
+				),
+
+				Body: response.Body,
+
+				ContentLength: response.ContentLength,
+			},
+		}
+
+		if response.Metadata != nil {
+			job.Response.Metadata = audit.Metadata{
+				RequestID: response.Metadata.RequestId,
+				Source:    response.Metadata.Source,
+			}
+
+			if response.Metadata.Timestamp != nil {
+				job.Response.Metadata.Timestamp =
+					response.Metadata.Timestamp.
+						AsTime().
+						Format(time.RFC3339Nano)
+			}
+		}
+
+		return job, nil
+	}
+
+	return audit.Job{},
+		fmt.Errorf(
+			"unsupported log event type %T",
+			logRecord.Event,
+		)
+}
+
+func toHTTPHeader(
+	headers map[string]*queryv1.HeaderValues,
+) http.Header {
+	result := http.Header{}
+
+	for key, value := range headers {
+		if value != nil {
+			result[key] = value.Values
+		}
+	}
+
+	return result
 }

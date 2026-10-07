@@ -4,113 +4,156 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"api-observer/internal/audit"
 	ingestv1 "api-observer/proto/ingest/v1"
 )
 
-func toAuditJob(pb *ingestv1.Job) (audit.Job, error) {
-	if pb == nil || pb.Request == nil {
-		return audit.Job{}, fmt.Errorf("missing request")
+func toAuditJob(
+	pb *ingestv1.Record,
+) (audit.Job, error) {
+	if pb == nil {
+		return audit.Job{},
+			fmt.Errorf("record is nil")
 	}
 
-	req := pb.Request
+	switch event := pb.Event.(type) {
+	case *ingestv1.Record_Request:
+		if event.Request == nil {
+			return audit.Job{},
+				fmt.Errorf("missing request")
+		}
 
-	if req.Metadata == nil {
-		return audit.Job{}, fmt.Errorf("missing request metadata")
-	}
+		req := event.Request
 
-	if req.Metadata.RequestId == "" {
-		return audit.Job{}, fmt.Errorf("missing request ID")
-	}
+		if req.Metadata == nil {
+			return audit.Job{},
+				fmt.Errorf("missing request metadata")
+		}
 
-	u, err := url.Parse(req.Url)
-	if err != nil {
-		return audit.Job{}, fmt.Errorf("invalid request URL: %w", err)
-	}
+		if req.Metadata.RequestId == "" {
+			return audit.Job{},
+				fmt.Errorf("missing request ID")
+		}
 
-	if req.Url == "" {
-		return audit.Job{}, fmt.Errorf("missing request URL")
-	}
+		if req.Url == "" {
+			return audit.Job{},
+				fmt.Errorf("missing request URL")
+		}
 
-	job := audit.Job{
-		Request: &audit.RequestJob{
-			Method:        req.Method,
-			URL:           u,
-			Header:        toHTTPHeaders(req.Headers),
-			Body:          req.Body,
-			ContentLength: req.ContentLength,
+		u, err := url.Parse(
+			req.Url,
+		)
+		if err != nil {
+			return audit.Job{},
+				fmt.Errorf(
+					"invalid request URL: %w",
+					err,
+				)
+		}
 
-			Metadata: audit.Metadata{
-				RequestID: req.Metadata.RequestId,
-				Source:    req.Metadata.Source,
+		job := audit.Job{
+			Request: &audit.RequestJob{
+				Method: req.Method,
+				URL:    u,
+
+				Header: toHTTPHeaders(
+					req.Headers,
+				),
+
+				Body: req.Body,
+
+				ContentLength: req.ContentLength,
+
+				Metadata: audit.Metadata{
+					RequestID: req.Metadata.RequestId,
+					Source:    req.Metadata.Source,
+				},
 			},
-		},
-	}
-
-	switch pb.Type {
-	case ingestv1.JobType_JOB_TYPE_REQUEST:
-		if pb.Response != nil {
-			return audit.Job{}, fmt.Errorf(
-				"request job must not contain a response",
-			)
 		}
 
-		job.Type = audit.JobTypeRequest
-
-	case ingestv1.JobType_JOB_TYPE_RESPONSE:
-		if pb.Response == nil {
-			return audit.Job{}, fmt.Errorf("missing response")
+		if req.Metadata.Timestamp != nil {
+			job.Request.Metadata.Timestamp =
+				req.Metadata.Timestamp.
+					AsTime().
+					Format(time.RFC3339Nano)
 		}
 
-		resp := pb.Response
+		return job, nil
+
+	case *ingestv1.Record_Response:
+		if event.Response == nil {
+			return audit.Job{},
+				fmt.Errorf("missing response")
+		}
+
+		resp := event.Response
 
 		if resp.Metadata == nil {
-			return audit.Job{}, fmt.Errorf("missing response metadata")
+			return audit.Job{},
+				fmt.Errorf("missing response metadata")
 		}
 
-		if resp.Metadata.RequestId != req.Metadata.RequestId {
-			return audit.Job{}, fmt.Errorf(
-				"request and response IDs do not match",
-			)
+		if resp.Metadata.RequestId == "" {
+			return audit.Job{},
+				fmt.Errorf("missing request ID")
 		}
 
-		job.Type = audit.JobTypeResponse
+		job := audit.Job{
+			Response: &audit.ResponseJob{
+				StatusCode: int(
+					resp.StatusCode,
+				),
 
-		job.Response = &audit.ResponseJob{
-			StatusCode:    int(resp.StatusCode),
-			Header:        toHTTPHeaders(resp.Headers),
-			Body:          resp.Body,
-			ContentLength: resp.ContentLength,
+				Header: toHTTPHeaders(
+					resp.Headers,
+				),
 
-			Metadata: audit.Metadata{
-				RequestID: resp.Metadata.RequestId,
-				Source:    resp.Metadata.Source,
+				Body: resp.Body,
+
+				ContentLength: resp.ContentLength,
+
+				Metadata: audit.Metadata{
+					RequestID: resp.Metadata.RequestId,
+					Source:    resp.Metadata.Source,
+				},
 			},
 		}
 
-	default:
-		return audit.Job{}, fmt.Errorf(
-			"unsupported job type %v",
-			pb.Type,
-		)
-	}
+		if resp.Metadata.Timestamp != nil {
+			job.Response.Metadata.Timestamp =
+				resp.Metadata.Timestamp.
+					AsTime().
+					Format(time.RFC3339Nano)
+		}
 
-	return job, nil
+		return job, nil
+
+	default:
+		return audit.Job{},
+			fmt.Errorf(
+				"record does not contain a request or response",
+			)
+	}
 }
 
 func toHTTPHeaders(
 	headers map[string]*ingestv1.HeaderValues,
 ) http.Header {
-	result := make(http.Header)
+	result := make(
+		http.Header,
+	)
 
 	for name, values := range headers {
 		if values == nil {
 			continue
 		}
 
-		result[http.CanonicalHeaderKey(name)] =
-			append([]string(nil), values.Values...)
+		result[http.CanonicalHeaderKey(name)] = append(
+			[]string(nil),
+			values.Values...,
+		)
 	}
 
 	return result
