@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.34.1
-// source: ingest.proto
+// source: proto/ingest/v1/ingest.proto
 
 package ingestv1
 
@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type IngestServiceClient interface {
-	Ingest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[Job, IngestAck], error)
+	Ingest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[Record, IngestAck], error)
 }
 
 type ingestServiceClient struct {
@@ -37,24 +37,24 @@ func NewIngestServiceClient(cc grpc.ClientConnInterface) IngestServiceClient {
 	return &ingestServiceClient{cc}
 }
 
-func (c *ingestServiceClient) Ingest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[Job, IngestAck], error) {
+func (c *ingestServiceClient) Ingest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[Record, IngestAck], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &IngestService_ServiceDesc.Streams[0], IngestService_Ingest_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[Job, IngestAck]{ClientStream: stream}
+	x := &grpc.GenericClientStream[Record, IngestAck]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type IngestService_IngestClient = grpc.BidiStreamingClient[Job, IngestAck]
+type IngestService_IngestClient = grpc.BidiStreamingClient[Record, IngestAck]
 
 // IngestServiceServer is the server API for IngestService service.
 // All implementations must embed UnimplementedIngestServiceServer
 // for forward compatibility.
 type IngestServiceServer interface {
-	Ingest(grpc.BidiStreamingServer[Job, IngestAck]) error
+	Ingest(grpc.BidiStreamingServer[Record, IngestAck]) error
 	mustEmbedUnimplementedIngestServiceServer()
 }
 
@@ -65,7 +65,7 @@ type IngestServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedIngestServiceServer struct{}
 
-func (UnimplementedIngestServiceServer) Ingest(grpc.BidiStreamingServer[Job, IngestAck]) error {
+func (UnimplementedIngestServiceServer) Ingest(grpc.BidiStreamingServer[Record, IngestAck]) error {
 	return status.Error(codes.Unimplemented, "method Ingest not implemented")
 }
 func (UnimplementedIngestServiceServer) mustEmbedUnimplementedIngestServiceServer() {}
@@ -90,11 +90,11 @@ func RegisterIngestServiceServer(s grpc.ServiceRegistrar, srv IngestServiceServe
 }
 
 func _IngestService_Ingest_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(IngestServiceServer).Ingest(&grpc.GenericServerStream[Job, IngestAck]{ServerStream: stream})
+	return srv.(IngestServiceServer).Ingest(&grpc.GenericServerStream[Record, IngestAck]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type IngestService_IngestServer = grpc.BidiStreamingServer[Job, IngestAck]
+type IngestService_IngestServer = grpc.BidiStreamingServer[Record, IngestAck]
 
 // IngestService_ServiceDesc is the grpc.ServiceDesc for IngestService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -111,5 +111,5 @@ var IngestService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "ingest.proto",
+	Metadata: "proto/ingest/v1/ingest.proto",
 }

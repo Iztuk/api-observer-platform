@@ -7,21 +7,14 @@ option go_package = "api-observer/proto/ingest/v1;ingestv1";
 import "google/protobuf/timestamp.proto";
 
 service IngestService {
-  rpc Ingest(stream Job) returns (stream IngestAck);
+  rpc Ingest(stream Record) returns (stream IngestAck);
 }
 
-message Job {
-  string id = 1;
-
-  JobType type = 2;
-  Request request = 3;
-  Response response = 4;
-}
-
-enum JobType {
-  JOB_TYPE_UNSPECIFIED = 0;
-  JOB_TYPE_REQUEST = 1;
-  JOB_TYPE_RESPONSE = 2;
+message Record {
+  oneof event {
+    Request request = 1;
+    Response response = 2;
+  }
 }
 
 message Metadata {
@@ -58,7 +51,7 @@ enum IngestStatus {
 }
 
 message IngestAck {
-  string job_id = 1;
+  string record_id = 1;
   IngestStatus status = 2;
   string message = 3;
   bool retryable = 4;
