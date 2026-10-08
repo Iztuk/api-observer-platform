@@ -509,7 +509,7 @@ func logToJob(
 				Method: request.Method,
 				URL:    requestURL,
 
-				Header: toHTTPHeader(
+				Headers: toHTTPHeader(
 					request.Headers,
 				),
 
@@ -527,9 +527,7 @@ func logToJob(
 
 			if request.Metadata.Timestamp != nil {
 				job.Request.Metadata.Timestamp =
-					request.Metadata.Timestamp.
-						AsTime().
-						Format(time.RFC3339Nano)
+					request.Metadata.Timestamp.AsTime().UnixNano()
 			}
 		}
 
@@ -549,7 +547,7 @@ func logToJob(
 					response.StatusCode,
 				),
 
-				Header: toHTTPHeader(
+				Headers: toHTTPHeader(
 					response.Headers,
 				),
 
@@ -567,9 +565,7 @@ func logToJob(
 
 			if response.Metadata.Timestamp != nil {
 				job.Response.Metadata.Timestamp =
-					response.Metadata.Timestamp.
-						AsTime().
-						Format(time.RFC3339Nano)
+					response.Metadata.Timestamp.AsTime().UnixNano()
 			}
 		}
 

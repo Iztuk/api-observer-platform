@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 
 	"api-observer/internal/audit"
 	ingestv1 "api-observer/proto/ingest/v1"
@@ -58,7 +57,7 @@ func toAuditJob(
 				Method: req.Method,
 				URL:    u,
 
-				Header: toHTTPHeaders(
+				Headers: toHTTPHeaders(
 					req.Headers,
 				),
 
@@ -75,9 +74,7 @@ func toAuditJob(
 
 		if req.Metadata.Timestamp != nil {
 			job.Request.Metadata.Timestamp =
-				req.Metadata.Timestamp.
-					AsTime().
-					Format(time.RFC3339Nano)
+				req.Metadata.Timestamp.AsTime().UnixNano()
 		}
 
 		return job, nil
@@ -106,7 +103,7 @@ func toAuditJob(
 					resp.StatusCode,
 				),
 
-				Header: toHTTPHeaders(
+				Headers: toHTTPHeaders(
 					resp.Headers,
 				),
 
@@ -123,9 +120,7 @@ func toAuditJob(
 
 		if resp.Metadata.Timestamp != nil {
 			job.Response.Metadata.Timestamp =
-				resp.Metadata.Timestamp.
-					AsTime().
-					Format(time.RFC3339Nano)
+				resp.Metadata.Timestamp.AsTime().UnixNano()
 		}
 
 		return job, nil

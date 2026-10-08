@@ -101,7 +101,7 @@ func (c MatchCondition) EvaluateCondition(j Job) bool {
 
 	case RuleTargetHeader:
 		return evaluateTargetHeader(
-			j.Request.Header,
+			j.Request.Headers,
 			c.Operator,
 			c.Key,
 			c.Value,
@@ -138,7 +138,7 @@ func (c MatchCondition) EvaluateCondition(j Job) bool {
 
 	case RuleTargetCookie:
 		return evaluateTargetCookie(
-			getCookies(j.Request.Header),
+			getCookies(j.Request.Headers),
 			c.Operator,
 			c.Key,
 			c.Value,
@@ -148,7 +148,7 @@ func (c MatchCondition) EvaluateCondition(j Job) bool {
 
 	case RuleTargetCookieName:
 		return evaluateTargetCookieName(
-			getCookies(j.Request.Header),
+			getCookies(j.Request.Headers),
 			c.Operator,
 			c.Value,
 			c.Negated,

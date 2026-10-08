@@ -42,7 +42,7 @@ func init() {
 		&blockSize,
 		"block-size",
 		"b",
-		100,
+		256,
 		"Number of log lines per index block",
 	)
 
