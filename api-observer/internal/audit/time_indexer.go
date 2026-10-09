@@ -21,6 +21,7 @@ type TimeIndexBlock struct {
 }
 
 // Serves as the function for creating a sparse index based on time for the findings file
+// Creates the boundary for searching entries within the findings log
 func WatchTimeIndexFile(
 	ctx context.Context,
 	filePath string,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"sync"
 )
@@ -66,6 +67,7 @@ func (q *Queue) StartWorkers(ctx context.Context, rs *RuleSet, count int, al, fl
 	}
 
 	findingsPath := findingsFile.Name()
+	findingsDir := filepath.Dir(findingsPath)
 
 	wg.Add(1)
 
@@ -108,7 +110,15 @@ func (q *Queue) StartWorkers(ctx context.Context, rs *RuleSet, count int, al, fl
 						al.Printf("an error occured while evaluating job: %v", err)
 					}
 					for _, finding := range findings {
-						finding.Log(al, fl)
+						offset, err := finding.Log(al, fl)
+						if err != nil {
+							continue
+						}
+
+						err = finding.WriteNodeFindingIndexEntry(findingsDir, offset)
+						if err != nil {
+							al.Println(err)
+						}
 					}
 				}()
 			}
