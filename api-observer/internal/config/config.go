@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -15,7 +16,7 @@ type Config struct {
 	FindingsLog string `yaml:"findings_log"` // WAL will share the same directory
 	RuleSetPath string `yaml:"rules"`
 
-	IngestPort    string `yaml:"ingest_port"`
+	IngestAddress string `yaml:"ingest_address"`
 	DashboardPort string `yaml:"dashboard_port"`
 	QueueSize     int    `yaml:"queue_size"`
 	WorkerCount   int    `yaml:"worker_count"`
@@ -237,7 +238,7 @@ func DefaultConfig() (*Config, error) {
 			"rules.yaml",
 		),
 
-		IngestPort:    ":24899",
+		IngestAddress: ":24899",
 		DashboardPort: ":8080",
 		QueueSize:     1000,
 		WorkerCount:   5,
@@ -323,8 +324,8 @@ func (cfg Config) Validate() error {
 		return fmt.Errorf("findings_log cannot be empty")
 	}
 
-	if cfg.IngestPort == "" {
-		return fmt.Errorf("ingest_port cannot be empty")
+	if cfg.IngestAddress == "" {
+		return fmt.Errorf("ingest_address cannot be empty")
 	}
 
 	if cfg.DashboardPort == "" {
@@ -344,4 +345,27 @@ func (cfg Config) Validate() error {
 	}
 
 	return nil
+}
+
+func (cfg Config) IngestAdvertiseAddress() (string, error) {
+	host, port, err := net.SplitHostPort(
+		cfg.IngestAddress,
+	)
+	if err != nil {
+		return "",
+			fmt.Errorf(
+				"invalid ingest address %q: %w",
+				cfg.IngestAddress,
+				err,
+			)
+	}
+
+	if host == "" {
+		host = "localhost"
+	}
+
+	return net.JoinHostPort(
+		host,
+		port,
+	), nil
 }

@@ -3,8 +3,6 @@ package audit
 import (
 	"context"
 	"log"
-	"os"
-	"path/filepath"
 	"runtime/debug"
 	"sync"
 )
@@ -57,35 +55,6 @@ func (q *Queue) TryEnqueue(job Job) bool {
 func (q *Queue) StartWorkers(ctx context.Context, rs *RuleSet, count int, al, fl *log.Logger) *sync.WaitGroup {
 	var wg sync.WaitGroup
 
-	findingsFile, ok := fl.Writer().(*os.File)
-	if !ok {
-		al.Println(
-			"findings logger is not writing directly to a file",
-		)
-
-		return &wg
-	}
-
-	findingsPath := findingsFile.Name()
-	findingsDir := filepath.Dir(findingsPath)
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		if err := WatchTimeIndexFile(
-			ctx,
-			findingsPath,
-			256,
-		); err != nil {
-			al.Printf(
-				"findings indexer stopped: %v",
-				err,
-			)
-		}
-	}()
-
 	for i := range count {
 		wg.Add(1)
 
@@ -110,14 +79,10 @@ func (q *Queue) StartWorkers(ctx context.Context, rs *RuleSet, count int, al, fl
 						al.Printf("an error occured while evaluating job: %v", err)
 					}
 					for _, finding := range findings {
-						offset, err := finding.Log(al, fl)
-						if err != nil {
-							continue
-						}
-
-						err = finding.WriteNodeFindingIndexEntry(findingsDir, offset)
+						err := finding.Log(al, fl)
 						if err != nil {
 							al.Println(err)
+							continue
 						}
 					}
 				}()

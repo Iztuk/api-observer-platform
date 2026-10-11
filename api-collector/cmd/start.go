@@ -6,9 +6,11 @@ package cmd
 import (
 	"api-collector/internal/identity"
 	"api-collector/internal/indexer"
+	"api-collector/internal/ingest"
 	"api-collector/internal/query"
 	"api-collector/internal/watcher"
 	queryv1 "api-collector/proto/query/v1"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -93,9 +95,33 @@ var startCmd = &cobra.Command{
 		)
 		defer stop()
 
+		ingestClient :=
+			ingest.NewClient()
+
+		defer func() {
+			if err := ingestClient.Close(); err != nil {
+				fmt.Printf(
+					"failed to close ingest client: %v\n",
+					err,
+				)
+			}
+		}()
+
 		indexBlocks, err := indexer.ReadIndexFile(file)
 		if err != nil {
-			return err
+			if errors.Is(err, os.ErrNotExist) {
+				err := indexer.IndexFile(file, blockSize)
+				if err != nil {
+					return err
+				}
+
+				indexBlocks, err = indexer.ReadIndexFile(file)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
 		}
 
 		tree := indexer.NewBPlusTree[int64, indexer.IndexBlock](128)
@@ -124,9 +150,11 @@ var startCmd = &cobra.Command{
 		grpcServer := grpc.NewServer()
 
 		queryServer := query.NewServer(
+			ctx,
 			file,
 			tree,
 			collectorID,
+			ingestClient,
 		)
 
 		queryv1.RegisterLogServiceServer(
@@ -142,7 +170,14 @@ var startCmd = &cobra.Command{
 			}
 		}()
 
-		return watcher.Watch(ctx, file, lastBlock, tree)
+		return watcher.Watch(
+			ctx,
+			file,
+			lastBlock,
+			tree,
+			ingestClient,
+			collectorID,
+		)
 	},
 }
 

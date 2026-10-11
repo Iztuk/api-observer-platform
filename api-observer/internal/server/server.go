@@ -8,6 +8,7 @@ import (
 	"api-observer/internal/ingest"
 	"api-observer/internal/nodes"
 	ingestv1 "api-observer/proto/ingest/v1"
+	"database/sql"
 
 	"context"
 	"fmt"
@@ -19,11 +20,15 @@ import (
 	"path/filepath"
 	"time"
 
+	_ "github.com/duckdb/duckdb-go/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
-func RunServer(ctx context.Context, background bool) error {
+func RunServer(
+	ctx context.Context,
+	background bool,
+) error {
 	// Load configuration.
 	cfg, err := config.LoadConfigurationFile()
 	if err != nil {
@@ -59,14 +64,18 @@ func RunServer(ctx context.Context, background bool) error {
 	}
 	defer findingsLogFile.Close()
 
-	log.SetOutput(appLogger.Writer())
+	log.SetOutput(
+		appLogger.Writer(),
+	)
 
 	var rs *audit.RuleSet
 
 	if cfg.RuleSetPath == "" {
 		rs = audit.NewRuleSet()
 	} else {
-		fc, err := loadFile(cfg.RuleSetPath)
+		fc, err := loadFile(
+			cfg.RuleSetPath,
+		)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to load rule set: %w",
@@ -74,7 +83,9 @@ func RunServer(ctx context.Context, background bool) error {
 			)
 		}
 
-		rs, err = audit.ParseRuleSet(fc)
+		rs, err = audit.ParseRuleSet(
+			fc,
+		)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to parse rule set: %w",
@@ -83,11 +94,13 @@ func RunServer(ctx context.Context, background bool) error {
 		}
 	}
 
-	queue := audit.NewQueue(cfg.QueueSize)
+	queue := audit.NewQueue(
+		cfg.QueueSize,
+	)
 
 	grpcListener, err := net.Listen(
 		"tcp",
-		cfg.IngestPort,
+		cfg.IngestAddress,
 	)
 	if err != nil {
 		return fmt.Errorf(
@@ -97,48 +110,118 @@ func RunServer(ctx context.Context, background bool) error {
 	}
 	defer grpcListener.Close()
 
+	grpcServer := grpc.NewServer()
+
+	ingestv1.RegisterIngestServiceServer(
+		grpcServer,
+		ingest.NewServer(
+			queue,
+		),
+	)
+
+	reflection.Register(
+		grpcServer,
+	)
+
+	type serverResult struct {
+		name string
+		err  error
+	}
+
+	serverErr := make(
+		chan serverResult,
+		2,
+	)
+
+	go func() {
+		serverErr <- serverResult{
+			name: "gRPC",
+			err: grpcServer.Serve(
+				grpcListener,
+			),
+		}
+	}()
+
+	ingestAdvertiseAddress, err :=
+		cfg.IngestAdvertiseAddress()
+	if err != nil {
+		grpcServer.Stop()
+
+		return fmt.Errorf(
+			"failed to resolve ingest advertise address: %w",
+			err,
+		)
+	}
+
+	mux := http.NewServeMux()
+
+	fileServer := http.FileServer(
+		http.Dir(
+			"./internal/dashboard/views/assets",
+		),
+	)
+
+	mux.Handle(
+		"GET /static/",
+		http.StripPrefix(
+			"/static/",
+			fileServer,
+		),
+	)
+
+	nm := nodes.NewNodeManager(
+		ingestAdvertiseAddress,
+		appLogger,
+	)
+
+	defer nm.Close()
+
+	for _, node := range cfg.Nodes {
+		if err := nm.Add(
+			ctx,
+			node.Name,
+			node.Addr,
+		); err != nil {
+			grpcServer.Stop()
+
+			return fmt.Errorf(
+				"failed to add node %q: %w",
+				node.Name,
+				err,
+			)
+		}
+	}
+
+	db, err := sql.Open("duckdb", "")
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+
+	dashboardHandler := dashboard.NewHandler(
+		rs,
+		nm,
+		cfg,
+		queue,
+		db,
+	)
+
+	dashboardHandler.RegisterRoutes(
+		mux,
+	)
+
 	httpListener, err := net.Listen(
 		"tcp",
 		cfg.DashboardPort,
 	)
 	if err != nil {
+		grpcServer.Stop()
+
 		return fmt.Errorf(
 			"failed to create HTTP listener: %w",
 			err,
 		)
 	}
 	defer httpListener.Close()
-
-	grpcServer := grpc.NewServer()
-
-	ingestv1.RegisterIngestServiceServer(
-		grpcServer,
-		ingest.NewServer(queue),
-	)
-
-	reflection.Register(grpcServer)
-
-	mux := http.NewServeMux()
-
-	fileServer := http.FileServer(
-		http.Dir("./internal/dashboard/views/assets"),
-	)
-
-	mux.Handle(
-		"GET /static/",
-		http.StripPrefix("/static/", fileServer),
-	)
-
-	nm := nodes.NewNodeManager()
-
-	for _, node := range cfg.Nodes {
-		if err := nm.Add(ctx, node.Name, node.Addr); err != nil {
-			return fmt.Errorf("failed to add node %q: %w", node.Name, err)
-		}
-	}
-
-	dashboardHandler := dashboard.NewHandler(rs, nm, cfg, queue)
-	dashboardHandler.RegisterRoutes(mux)
 
 	httpServer := &http.Server{
 		Handler: mux,
@@ -162,28 +245,21 @@ func RunServer(ctx context.Context, background bool) error {
 		queue.Close()
 		wg.Wait()
 
-		appLogger.Println("workers stopped")
-		appLogger.Println("API Observer stopped")
-	}()
+		appLogger.Println(
+			"workers stopped",
+		)
 
-	type serverResult struct {
-		name string
-		err  error
-	}
-
-	serverErr := make(chan serverResult, 2)
-
-	go func() {
-		serverErr <- serverResult{
-			name: "gRPC",
-			err:  grpcServer.Serve(grpcListener),
-		}
+		appLogger.Println(
+			"API Observer stopped",
+		)
 	}()
 
 	go func() {
 		serverErr <- serverResult{
 			name: "HTTP",
-			err:  httpServer.Serve(httpListener),
+			err: httpServer.Serve(
+				httpListener,
+			),
 		}
 	}()
 
@@ -197,7 +273,9 @@ func RunServer(ctx context.Context, background bool) error {
 		httpListener.Addr(),
 	)
 
-	appLogger.Println("API Observer started")
+	appLogger.Println(
+		"API Observer started",
+	)
 
 	var runErr error
 
@@ -214,7 +292,9 @@ func RunServer(ctx context.Context, background bool) error {
 			result.err,
 		)
 
-		appLogger.Println(runErr)
+		appLogger.Println(
+			runErr,
+		)
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(
@@ -223,13 +303,17 @@ func RunServer(ctx context.Context, background bool) error {
 	)
 	defer cancel()
 
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+	if err := httpServer.Shutdown(
+		shutdownCtx,
+	); err != nil {
 		appLogger.Printf(
 			"HTTP graceful shutdown failed: %v",
 			err,
 		)
 
-		if closeErr := httpServer.Close(); closeErr != nil {
+		if closeErr :=
+			httpServer.Close(); closeErr != nil {
+
 			appLogger.Printf(
 				"HTTP forced shutdown failed: %v",
 				closeErr,
@@ -237,25 +321,37 @@ func RunServer(ctx context.Context, background bool) error {
 		}
 	}
 
-	appLogger.Println("HTTP server stopped")
+	appLogger.Println(
+		"HTTP server stopped",
+	)
 
-	stopped := make(chan struct{})
+	stopped := make(
+		chan struct{},
+	)
 
 	go func() {
 		grpcServer.GracefulStop()
-		close(stopped)
+
+		close(
+			stopped,
+		)
 	}()
 
 	select {
 	case <-stopped:
-		appLogger.Println("gRPC server stopped")
+		appLogger.Println(
+			"gRPC server stopped",
+		)
 
-	case <-time.After(5 * time.Second):
+	case <-time.After(
+		5 * time.Second,
+	):
 		appLogger.Println(
 			"gRPC shutdown timed out; forcing shutdown",
 		)
 
 		grpcServer.Stop()
+
 		<-stopped
 	}
 
@@ -267,21 +363,32 @@ func newLogger(
 	writeStdout bool,
 	flag int,
 ) (*log.Logger, *os.File, error) {
-	dir := filepath.Dir(logPath)
+	dir := filepath.Dir(
+		logPath,
+	)
 
 	if dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, nil, err
+		if err := os.MkdirAll(
+			dir,
+			0o755,
+		); err != nil {
+			return nil,
+				nil,
+				err
 		}
 	}
 
 	file, err := os.OpenFile(
 		logPath,
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+		os.O_CREATE|
+			os.O_WRONLY|
+			os.O_APPEND,
 		0o644,
 	)
 	if err != nil {
-		return nil, nil, err
+		return nil,
+			nil,
+			err
 	}
 
 	var writer io.Writer = file
@@ -299,14 +406,23 @@ func newLogger(
 		flag,
 	)
 
-	return logger, file, nil
+	return logger,
+		file,
+		nil
 }
 
-func loadFile(path string) (string, error) {
-	data, err := os.ReadFile(path)
+func loadFile(
+	path string,
+) (string, error) {
+	data, err := os.ReadFile(
+		path,
+	)
 	if err != nil {
-		return "", err
+		return "",
+			err
 	}
 
-	return string(data), nil
+	return string(
+		data,
+	), nil
 }

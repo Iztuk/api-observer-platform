@@ -2,42 +2,93 @@
 package query
 
 import (
-	"api-collector/internal/indexer"
-	queryv1 "api-collector/proto/query/v1"
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"google.golang.org/protobuf/types/known/emptypb"
+	"api-collector/internal/indexer"
+	"api-collector/internal/ingest"
+	queryv1 "api-collector/proto/query/v1"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Server struct {
 	queryv1.UnimplementedLogServiceServer
 
-	filePath    string
-	tree        *indexer.BPlusTree[int64, indexer.IndexBlock]
+	ctx context.Context
+
+	filePath string
+
+	tree *indexer.BPlusTree[
+		int64,
+		indexer.IndexBlock,
+	]
+
 	collectorID string
+
+	ingestClient *ingest.Client
 }
 
 func NewServer(
+	ctx context.Context,
 	filePath string,
-	tree *indexer.BPlusTree[int64, indexer.IndexBlock],
+	tree *indexer.BPlusTree[
+		int64,
+		indexer.IndexBlock,
+	],
 	collectorID string,
+	ingestClient *ingest.Client,
 ) *Server {
 	return &Server{
-		filePath:    filePath,
-		tree:        tree,
-		collectorID: collectorID,
+		ctx:          ctx,
+		filePath:     filePath,
+		tree:         tree,
+		collectorID:  collectorID,
+		ingestClient: ingestClient,
 	}
 }
 
 func (s *Server) Info(
 	ctx context.Context,
-	req *emptypb.Empty,
+	req *queryv1.ObserverInfo,
 ) (*queryv1.InfoReply, error) {
+	if req == nil {
+		return nil,
+			status.Error(
+				codes.InvalidArgument,
+				"info request is nil",
+			)
+	}
+
+	if req.IngestAddress == "" {
+		return nil,
+			status.Error(
+				codes.InvalidArgument,
+				"ingest address is required",
+			)
+	}
+
+	if err := s.ingestClient.Connect(
+		s.ctx,
+		req.IngestAddress,
+	); err != nil {
+		return nil,
+			status.Errorf(
+				codes.Unavailable,
+				"failed to connect to Observer ingest service: %v",
+				err,
+			)
+	}
+
+	fmt.Printf(
+		"Connected to API Observer ingest service at %s\n",
+		req.IngestAddress,
+	)
+
 	return &queryv1.InfoReply{
 		CollectorId: s.collectorID,
 	}, nil
@@ -104,14 +155,10 @@ func (s *Server) Query(
 	startOffset := startBlock.StartOffset
 	endOffset := endBlock.EndOffset
 
-	/*
-		Cursor is treated as an absolute byte offset.
+	if params.Cursor > 0 &&
+		params.Cursor < endOffset {
 
-		This only works safely if cursors always point to the
-		beginning of a log record.
-	*/
-	if params.Cursor > startOffset {
-		startOffset = params.Cursor
+		endOffset = params.Cursor
 	}
 
 	if startOffset >= endOffset {
@@ -193,22 +240,9 @@ func (s *Server) streamLogs(
 	}
 	defer file.Close()
 
-	if _, err := file.Seek(
-		startOffset,
-		io.SeekStart,
-	); err != nil {
-		return fmt.Errorf(
-			"failed to seek to offset %d: %w",
-			startOffset,
-			err,
-		)
-	}
+	offset := endOffset
 
-	reader := bufio.NewReader(file)
-
-	offset := startOffset
-
-	for offset < endOffset {
+	for offset > startOffset {
 		select {
 		case <-stream.Context().Done():
 			return stream.Context().Err()
@@ -216,104 +250,194 @@ func (s *Server) streamLogs(
 		default:
 		}
 
-		lineStart := offset
-
-		lineBytes, readErr := reader.ReadBytes('\n')
-
-		if len(lineBytes) > 0 {
-			offset += int64(len(lineBytes))
-
-			if lineStart >= endOffset {
-				break
-			}
-
-			timestamp, err := indexer.ReadTimestamp(
-				lineBytes,
-			)
-			if err != nil {
-				return fmt.Errorf(
-					"failed to read timestamp at offset %d: %w",
-					lineStart,
-					err,
-				)
-			}
-
-			logTime := time.Unix(
-				0,
-				timestamp,
-			)
-
-			if logTime.Before(startTime) {
-				continue
-			}
-
-			if logTime.After(endTime) {
-				break
-			}
-
-			request, response, err := DecodeModSecLog(
-				lineBytes,
-				s.collectorID,
-			)
-			if err != nil {
-				return fmt.Errorf(
-					"failed to decode ModSecurity log at offset %d: %w",
-					lineStart,
-					err,
-				)
-			}
-
-			nextCursor := offset
-
-			requestLog := &queryv1.Log{
-				Cursor: nextCursor,
-
-				Event: &queryv1.Log_Request{
-					Request: request,
-				},
-			}
-
-			responseLog := &queryv1.Log{
-				Cursor: nextCursor,
-
-				Event: &queryv1.Log_Response{
-					Response: response,
-				},
-			}
-
-			if err := stream.Send(
-				requestLog,
-			); err != nil {
-				return fmt.Errorf(
-					"failed to stream request at offset %d: %w",
-					lineStart,
-					err,
-				)
-			}
-
-			if err := stream.Send(
-				responseLog,
-			); err != nil {
-				return fmt.Errorf(
-					"failed to stream response at offset %d: %w",
-					lineStart,
-					err,
-				)
-			}
-		}
-
-		if readErr != nil {
-			if readErr == io.EOF {
+		lineBytes, lineStart, err := readPreviousLine(
+			file,
+			startOffset,
+			offset,
+		)
+		if err != nil {
+			if err == io.EOF {
 				break
 			}
 
 			return fmt.Errorf(
-				"failed reading log file at offset %d: %w",
+				"failed reading log file backwards from offset %d: %w",
 				offset,
-				readErr,
+				err,
+			)
+		}
+
+		offset = lineStart
+
+		if len(lineBytes) == 0 {
+			continue
+		}
+
+		timestamp, err := indexer.ReadTimestamp(
+			lineBytes,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to read timestamp at offset %d: %w",
+				lineStart,
+				err,
+			)
+		}
+
+		logTime := time.Unix(
+			0,
+			timestamp,
+		)
+
+		if logTime.After(endTime) {
+			continue
+		}
+
+		if logTime.Before(startTime) {
+			break
+		}
+
+		request, response, err := DecodeModSecLog(
+			lineBytes,
+			s.collectorID,
+		)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to decode ModSecurity log at offset %d: %w",
+				lineStart,
+				err,
+			)
+		}
+
+		nextCursor := lineStart
+
+		requestLog := &queryv1.Log{
+			Cursor: nextCursor,
+
+			Event: &queryv1.Log_Request{
+				Request: request,
+			},
+		}
+
+		responseLog := &queryv1.Log{
+			Cursor: nextCursor,
+
+			Event: &queryv1.Log_Response{
+				Response: response,
+			},
+		}
+
+		if err := stream.Send(
+			requestLog,
+		); err != nil {
+			return fmt.Errorf(
+				"failed to stream request at offset %d: %w",
+				lineStart,
+				err,
+			)
+		}
+
+		if err := stream.Send(
+			responseLog,
+		); err != nil {
+			return fmt.Errorf(
+				"failed to stream response at offset %d: %w",
+				lineStart,
+				err,
 			)
 		}
 	}
 
 	return nil
+}
+
+func readPreviousLine(
+	file *os.File,
+	startOffset int64,
+	endOffset int64,
+) (
+	[]byte,
+	int64,
+	error,
+) {
+	if endOffset <= startOffset {
+		return nil,
+			startOffset,
+			io.EOF
+	}
+
+	cursor := endOffset
+
+	lastByte := make(
+		[]byte,
+		1,
+	)
+
+	if _, err := file.ReadAt(
+		lastByte,
+		cursor-1,
+	); err != nil {
+		return nil,
+			startOffset,
+			err
+	}
+
+	if lastByte[0] == '\n' {
+		cursor--
+	}
+
+	lineEnd := cursor
+
+	for cursor > startOffset {
+		cursor--
+
+		b := make(
+			[]byte,
+			1,
+		)
+
+		if _, err := file.ReadAt(
+			b,
+			cursor,
+		); err != nil {
+			return nil,
+				startOffset,
+				err
+		}
+
+		if b[0] == '\n' {
+			cursor++
+			break
+		}
+	}
+
+	if cursor < startOffset {
+		cursor = startOffset
+	}
+
+	lineLength := lineEnd - cursor
+
+	if lineLength <= 0 {
+		return nil,
+			cursor,
+			nil
+	}
+
+	lineBytes := make(
+		[]byte,
+		lineLength,
+	)
+
+	if _, err := file.ReadAt(
+		lineBytes,
+		cursor,
+	); err != nil {
+		return nil,
+			cursor,
+			err
+	}
+
+	return lineBytes,
+		cursor,
+		nil
 }

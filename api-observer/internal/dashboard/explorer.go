@@ -5,6 +5,7 @@ import (
 	"api-observer/internal/dashboard/views/explorer"
 	"api-observer/internal/query"
 	queryv1 "api-observer/proto/query/v1"
+
 	"context"
 	"fmt"
 	"io"
@@ -54,7 +55,7 @@ func (h *Handler) ExplorerPage(
 	nodeList := h.Nodes.List()
 
 	var (
-		logs       []query.LogItem
+		logs       query.LogItems
 		nextCursor int64
 		hasMore    bool
 	)
@@ -98,6 +99,25 @@ func (h *Handler) ExplorerPage(
 			return
 		}
 
+		if err := logs.GetFindings(
+			r.Context(),
+			h.DB,
+			h.Config.FindingsLog,
+			params.NodeID,
+			params.Start.UnixNano(),
+			params.End.UnixNano(),
+		); err != nil {
+			http.Error(
+				w,
+				fmt.Sprintf(
+					"failed to retrieve log findings: %v",
+					err,
+				),
+				http.StatusInternalServerError,
+			)
+
+			return
+		}
 	}
 
 	if err := explorer.ExplorerPage(
@@ -180,6 +200,26 @@ func (h *Handler) ExplorerLogs(
 			w,
 			fmt.Sprintf(
 				"failed to retrieve logs: %v",
+				err,
+			),
+			http.StatusInternalServerError,
+		)
+
+		return
+	}
+
+	if err := logs.GetFindings(
+		r.Context(),
+		h.DB,
+		h.Config.FindingsLog,
+		params.NodeID,
+		params.Start.UnixNano(),
+		params.End.UnixNano(),
+	); err != nil {
+		http.Error(
+			w,
+			fmt.Sprintf(
+				"failed to retrieve log findings: %v",
 				err,
 			),
 			http.StatusInternalServerError,
@@ -323,7 +363,7 @@ func streamLogs(
 	startCursor int64,
 	limit int,
 ) (
-	[]query.LogItem,
+	query.LogItems,
 	int64,
 	bool,
 	error,
@@ -362,7 +402,7 @@ func streamLogs(
 	}
 
 	logs := make(
-		[]query.LogItem,
+		query.LogItems,
 		0,
 		limit,
 	)
@@ -370,6 +410,7 @@ func streamLogs(
 	nextCursor := startCursor
 
 	probing := false
+
 	for {
 		logRecord, err := stream.Recv()
 
@@ -386,16 +427,6 @@ func streamLogs(
 				false,
 				fmt.Errorf(
 					"failed to receive log: %w",
-					err,
-				)
-		}
-
-		if err != nil {
-			return logs,
-				nextCursor,
-				false,
-				fmt.Errorf(
-					"an error occurred while evaluating job: %w",
 					err,
 				)
 		}
@@ -481,14 +512,18 @@ func logToJob(
 ) (audit.Job, error) {
 	if logRecord == nil {
 		return audit.Job{},
-			fmt.Errorf("log record is nil")
+			fmt.Errorf(
+				"log record is nil",
+			)
 	}
 
 	switch event := logRecord.Event.(type) {
 	case *queryv1.Log_Request:
 		if event.Request == nil {
 			return audit.Job{},
-				fmt.Errorf("request is nil")
+				fmt.Errorf(
+					"request is nil",
+				)
 		}
 
 		request := event.Request
@@ -527,7 +562,9 @@ func logToJob(
 
 			if request.Metadata.Timestamp != nil {
 				job.Request.Metadata.Timestamp =
-					request.Metadata.Timestamp.AsTime().UnixNano()
+					request.Metadata.Timestamp.
+						AsTime().
+						UnixNano()
 			}
 		}
 
@@ -536,7 +573,9 @@ func logToJob(
 	case *queryv1.Log_Response:
 		if event.Response == nil {
 			return audit.Job{},
-				fmt.Errorf("response is nil")
+				fmt.Errorf(
+					"response is nil",
+				)
 		}
 
 		response := event.Response
@@ -565,7 +604,9 @@ func logToJob(
 
 			if response.Metadata.Timestamp != nil {
 				job.Response.Metadata.Timestamp =
-					response.Metadata.Timestamp.AsTime().UnixNano()
+					response.Metadata.Timestamp.
+						AsTime().
+						UnixNano()
 			}
 		}
 

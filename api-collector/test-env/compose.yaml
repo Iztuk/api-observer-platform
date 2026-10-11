@@ -1,23 +1,28 @@
 services:
-  test-app:
-    image: nginx:alpine
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    restart: unless-stopped
 
   modsecurity:
     image: docker.io/owasp/modsecurity-crs:nginx
+    restart: unless-stopped
 
     depends_on:
-      - test-app
+      - juice-shop
 
     ports:
-      - "8080:8080"
+      - "8082:8080"
 
     environment:
-      BACKEND: "http://test-app:80"
+      BACKEND: "http://juice-shop:3000"
       PORT: "8080"
 
-      MODSEC_RULE_ENGINE: "On"
+      MODSEC_RULE_ENGINE: "DetectionOnly"
       MODSEC_AUDIT_ENGINE: "On"
       MODSEC_AUDIT_LOG: "/var/log/modsecurity/modsec_audit.log"
+
+      MODSEC_RESP_BODY_ACCESS: "On"
+      MODSEC_RESP_BODY_MIMETYPE: "text/plain text/html text/xml application/json"
 
       BLOCKING_PARANOIA: "1"
       DETECTION_PARANOIA: "1"

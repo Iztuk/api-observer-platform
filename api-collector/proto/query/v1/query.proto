@@ -4,12 +4,15 @@ package apiobserver.query.v1;
 
 option go_package = "api-observer/proto/query/v1;queryv1";
 
-import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
 service LogService {
-  rpc Info(google.protobuf.Empty) returns (InfoReply);
+  rpc Info(ObserverInfo) returns (InfoReply);
   rpc Query(LogParams) returns (stream Log);
+}
+
+message ObserverInfo {
+  string ingest_address = 1;
 }
 
 message InfoReply {

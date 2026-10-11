@@ -60,7 +60,10 @@ templ ExplorerPageContent(
 					type="search"
 					id="explorer-query"
 					name="query"
-					value={ queryString } placeholder="Search logs..." aria-label="Search logs" />
+					value={ queryString }
+					placeholder="Search logs..."
+					aria-label="Search logs"
+				/>
 				<button
 					type="submit"
 					class="explorer-search-button"
@@ -217,7 +220,7 @@ templ ExplorerPageContent(
 							<th>Method</th>
 							<th>Path</th>
 							<th>Status</th>
-                            <th>Findings</th>
+							<th>Findings</th>
 						</tr>
 					</thead>
 
@@ -225,7 +228,7 @@ templ ExplorerPageContent(
 						if selectedNode == "" {
 							<tr>
 								<td
-									colspan="5"
+									colspan="6"
 									class="explorer-empty"
 								>
 									Select a node and run a search.
@@ -253,7 +256,7 @@ templ ExplorerLogRows(
 	if len(logs) == 0 {
 		<tr>
 			<td
-				colspan="5"
+				colspan="6"
 				class="explorer-empty"
 			>
 				No logs found.
@@ -272,7 +275,7 @@ templ ExplorerLogRows(
 		if !hasMore {
 			<tr>
 				<td
-					colspan="5"
+					colspan="6"
 					class="explorer-empty"
 				>
 					End of logs
@@ -307,12 +310,14 @@ templ ExplorerLogRow(
 						>
 							@ExplorerRequestColumns(
 								event.Request,
+								len(log.Findings),
 							)
 						</tr>
 					} else {
 						<tr class="explorer-log-row">
 							@ExplorerRequestColumns(
 								event.Request,
+								len(log.Findings),
 							)
 						</tr>
 					}
@@ -335,12 +340,14 @@ templ ExplorerLogRow(
 						>
 							@ExplorerResponseColumns(
 								event.Response,
+								len(log.Findings),
 							)
 						</tr>
 					} else {
 						<tr class="explorer-log-row">
 							@ExplorerResponseColumns(
 								event.Response,
+								len(log.Findings),
 							)
 						</tr>
 					}
@@ -351,6 +358,7 @@ templ ExplorerLogRow(
 
 templ ExplorerRequestColumns(
 	request *queryv1.Request,
+	findingsCount int,
 ) {
 	<td>
 		if request.Metadata != nil &&
@@ -378,11 +386,19 @@ templ ExplorerRequestColumns(
 
 	<td></td>
 
-    <td></td>
+	<td>
+		{
+			fmt.Sprintf(
+				"%d",
+				findingsCount,
+			)
+		}
+	</td>
 }
 
 templ ExplorerResponseColumns(
 	response *queryv1.Response,
+	findingsCount int,
 ) {
 	<td>
 		if response.Metadata != nil &&
@@ -412,5 +428,13 @@ templ ExplorerResponseColumns(
 			)
 		}
 	</td>
-    <td></td>
+
+	<td>
+		{
+			fmt.Sprintf(
+				"%d",
+				findingsCount,
+			)
+		}
+	</td>
 }
