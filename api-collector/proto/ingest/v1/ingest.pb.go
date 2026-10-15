@@ -553,6 +553,178 @@ func (x *IngestAck) GetRetryable() bool {
 	return false
 }
 
+type LogRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StartDate     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=start_date,json=startDate,proto3" json:"start_date,omitempty"`
+	EndDate       *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`
+	Cursor        *LogCursor             `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogRequest) Reset() {
+	*x = LogRequest{}
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogRequest) ProtoMessage() {}
+
+func (x *LogRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogRequest.ProtoReflect.Descriptor instead.
+func (*LogRequest) Descriptor() ([]byte, []int) {
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *LogRequest) GetStartDate() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartDate
+	}
+	return nil
+}
+
+func (x *LogRequest) GetEndDate() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EndDate
+	}
+	return nil
+}
+
+func (x *LogRequest) GetCursor() *LogCursor {
+	if x != nil {
+		return x.Cursor
+	}
+	return nil
+}
+
+type LogCursor struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	RequestId     string                 `protobuf:"bytes,2,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogCursor) Reset() {
+	*x = LogCursor{}
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogCursor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogCursor) ProtoMessage() {}
+
+func (x *LogCursor) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogCursor.ProtoReflect.Descriptor instead.
+func (*LogCursor) Descriptor() ([]byte, []int) {
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *LogCursor) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *LogCursor) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+type LogTransaction struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Request       *Request               `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	Response      *Response              `protobuf:"bytes,2,opt,name=response,proto3" json:"response,omitempty"`
+	Cursor        *LogCursor             `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogTransaction) Reset() {
+	*x = LogTransaction{}
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogTransaction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogTransaction) ProtoMessage() {}
+
+func (x *LogTransaction) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogTransaction.ProtoReflect.Descriptor instead.
+func (*LogTransaction) Descriptor() ([]byte, []int) {
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *LogTransaction) GetRequest() *Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *LogTransaction) GetResponse() *Response {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+func (x *LogTransaction) GetCursor() *LogCursor {
+	if x != nil {
+		return x.Cursor
+	}
+	return nil
+}
+
 var File_proto_ingest_v1_ingest_proto protoreflect.FileDescriptor
 
 const file_proto_ingest_v1_ingest_proto_rawDesc = "" +
@@ -597,13 +769,28 @@ const file_proto_ingest_v1_ingest_proto_rawDesc = "" +
 	"\trecord_id\x18\x01 \x01(\tR\brecordId\x12;\n" +
 	"\x06status\x18\x02 \x01(\x0e2#.apiobserver.ingest.v1.IngestStatusR\x06status\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12\x1c\n" +
-	"\tretryable\x18\x04 \x01(\bR\tretryable*e\n" +
+	"\tretryable\x18\x04 \x01(\bR\tretryable\"\xb8\x01\n" +
+	"\n" +
+	"LogRequest\x129\n" +
+	"\n" +
+	"start_date\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tstartDate\x125\n" +
+	"\bend_date\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\aendDate\x128\n" +
+	"\x06cursor\x18\x03 \x01(\v2 .apiobserver.ingest.v1.LogCursorR\x06cursor\"d\n" +
+	"\tLogCursor\x128\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x02 \x01(\tR\trequestId\"\xc1\x01\n" +
+	"\x0eLogTransaction\x128\n" +
+	"\arequest\x18\x01 \x01(\v2\x1e.apiobserver.ingest.v1.RequestR\arequest\x12;\n" +
+	"\bresponse\x18\x02 \x01(\v2\x1f.apiobserver.ingest.v1.ResponseR\bresponse\x128\n" +
+	"\x06cursor\x18\x03 \x01(\v2 .apiobserver.ingest.v1.LogCursorR\x06cursor*e\n" +
 	"\fIngestStatus\x12\x1d\n" +
 	"\x19INGEST_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16INGEST_STATUS_ACCEPTED\x10\x01\x12\x1a\n" +
-	"\x16INGEST_STATUS_REJECTED\x10\x022^\n" +
+	"\x16INGEST_STATUS_REJECTED\x10\x022\xb2\x01\n" +
 	"\rIngestService\x12M\n" +
-	"\x06Ingest\x12\x1d.apiobserver.ingest.v1.Record\x1a .apiobserver.ingest.v1.IngestAck(\x010\x01B'Z%api-observer/proto/ingest/v1;ingestv1b\x06proto3"
+	"\x06Ingest\x12\x1d.apiobserver.ingest.v1.Record\x1a .apiobserver.ingest.v1.IngestAck(\x010\x01\x12R\n" +
+	"\x04Logs\x12!.apiobserver.ingest.v1.LogRequest\x1a%.apiobserver.ingest.v1.LogTransaction0\x01B'Z%api-observer/proto/ingest/v1;ingestv1b\x06proto3"
 
 var (
 	file_proto_ingest_v1_ingest_proto_rawDescOnce sync.Once
@@ -618,7 +805,7 @@ func file_proto_ingest_v1_ingest_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_ingest_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_ingest_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_proto_ingest_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_proto_ingest_v1_ingest_proto_goTypes = []any{
 	(IngestStatus)(0),             // 0: apiobserver.ingest.v1.IngestStatus
 	(*Record)(nil),                // 1: apiobserver.ingest.v1.Record
@@ -628,30 +815,42 @@ var file_proto_ingest_v1_ingest_proto_goTypes = []any{
 	(*Request)(nil),               // 5: apiobserver.ingest.v1.Request
 	(*Response)(nil),              // 6: apiobserver.ingest.v1.Response
 	(*IngestAck)(nil),             // 7: apiobserver.ingest.v1.IngestAck
-	nil,                           // 8: apiobserver.ingest.v1.Request.HeadersEntry
-	nil,                           // 9: apiobserver.ingest.v1.Response.HeadersEntry
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(*LogRequest)(nil),            // 8: apiobserver.ingest.v1.LogRequest
+	(*LogCursor)(nil),             // 9: apiobserver.ingest.v1.LogCursor
+	(*LogTransaction)(nil),        // 10: apiobserver.ingest.v1.LogTransaction
+	nil,                           // 11: apiobserver.ingest.v1.Request.HeadersEntry
+	nil,                           // 12: apiobserver.ingest.v1.Response.HeadersEntry
+	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
 }
 var file_proto_ingest_v1_ingest_proto_depIdxs = []int32{
 	5,  // 0: apiobserver.ingest.v1.Record.request:type_name -> apiobserver.ingest.v1.Request
 	6,  // 1: apiobserver.ingest.v1.Record.response:type_name -> apiobserver.ingest.v1.Response
 	2,  // 2: apiobserver.ingest.v1.Record.heartbeat:type_name -> apiobserver.ingest.v1.Heartbeat
-	10, // 3: apiobserver.ingest.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	10, // 4: apiobserver.ingest.v1.Metadata.timestamp:type_name -> google.protobuf.Timestamp
-	8,  // 5: apiobserver.ingest.v1.Request.headers:type_name -> apiobserver.ingest.v1.Request.HeadersEntry
+	13, // 3: apiobserver.ingest.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	13, // 4: apiobserver.ingest.v1.Metadata.timestamp:type_name -> google.protobuf.Timestamp
+	11, // 5: apiobserver.ingest.v1.Request.headers:type_name -> apiobserver.ingest.v1.Request.HeadersEntry
 	3,  // 6: apiobserver.ingest.v1.Request.metadata:type_name -> apiobserver.ingest.v1.Metadata
-	9,  // 7: apiobserver.ingest.v1.Response.headers:type_name -> apiobserver.ingest.v1.Response.HeadersEntry
+	12, // 7: apiobserver.ingest.v1.Response.headers:type_name -> apiobserver.ingest.v1.Response.HeadersEntry
 	3,  // 8: apiobserver.ingest.v1.Response.metadata:type_name -> apiobserver.ingest.v1.Metadata
 	0,  // 9: apiobserver.ingest.v1.IngestAck.status:type_name -> apiobserver.ingest.v1.IngestStatus
-	4,  // 10: apiobserver.ingest.v1.Request.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
-	4,  // 11: apiobserver.ingest.v1.Response.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
-	1,  // 12: apiobserver.ingest.v1.IngestService.Ingest:input_type -> apiobserver.ingest.v1.Record
-	7,  // 13: apiobserver.ingest.v1.IngestService.Ingest:output_type -> apiobserver.ingest.v1.IngestAck
-	13, // [13:14] is the sub-list for method output_type
-	12, // [12:13] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	13, // 10: apiobserver.ingest.v1.LogRequest.start_date:type_name -> google.protobuf.Timestamp
+	13, // 11: apiobserver.ingest.v1.LogRequest.end_date:type_name -> google.protobuf.Timestamp
+	9,  // 12: apiobserver.ingest.v1.LogRequest.cursor:type_name -> apiobserver.ingest.v1.LogCursor
+	13, // 13: apiobserver.ingest.v1.LogCursor.timestamp:type_name -> google.protobuf.Timestamp
+	5,  // 14: apiobserver.ingest.v1.LogTransaction.request:type_name -> apiobserver.ingest.v1.Request
+	6,  // 15: apiobserver.ingest.v1.LogTransaction.response:type_name -> apiobserver.ingest.v1.Response
+	9,  // 16: apiobserver.ingest.v1.LogTransaction.cursor:type_name -> apiobserver.ingest.v1.LogCursor
+	4,  // 17: apiobserver.ingest.v1.Request.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
+	4,  // 18: apiobserver.ingest.v1.Response.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
+	1,  // 19: apiobserver.ingest.v1.IngestService.Ingest:input_type -> apiobserver.ingest.v1.Record
+	8,  // 20: apiobserver.ingest.v1.IngestService.Logs:input_type -> apiobserver.ingest.v1.LogRequest
+	7,  // 21: apiobserver.ingest.v1.IngestService.Ingest:output_type -> apiobserver.ingest.v1.IngestAck
+	10, // 22: apiobserver.ingest.v1.IngestService.Logs:output_type -> apiobserver.ingest.v1.LogTransaction
+	21, // [21:23] is the sub-list for method output_type
+	19, // [19:21] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_proto_ingest_v1_ingest_proto_init() }
@@ -670,7 +869,7 @@ func file_proto_ingest_v1_ingest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_ingest_v1_ingest_proto_rawDesc), len(file_proto_ingest_v1_ingest_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   9,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

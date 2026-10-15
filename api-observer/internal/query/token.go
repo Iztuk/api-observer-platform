@@ -71,7 +71,7 @@ type Value struct {
 type FieldName string
 
 const (
-	FieldNameHost      FieldName = "host"
+	FieldNameNode      FieldName = "node"
 	FielNameMethod     FieldName = "method"
 	FieldNamePath      FieldName = "path"
 	FieldNameStatus    FieldName = "status"

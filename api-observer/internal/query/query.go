@@ -15,6 +15,7 @@ type LogItems []LogItem
 type LogItem struct {
 	Log      *queryv1.Log
 	Findings []audit.Finding
+	NodeName string
 }
 
 func (items *LogItems) GetFindings(
@@ -25,8 +26,13 @@ func (items *LogItems) GetFindings(
 	startTime int64,
 	endTime int64,
 ) error {
+	type logKey struct {
+		RequestID string
+		Type      audit.JobType
+	}
+
 	itemIndexes := make(
-		map[string][]int,
+		map[logKey][]int,
 	)
 
 	for i := range *items {
@@ -51,8 +57,13 @@ func (items *LogItems) GetFindings(
 				continue
 			}
 
-			itemIndexes[requestID] = append(
-				itemIndexes[requestID],
+			key := logKey{
+				RequestID: requestID,
+				Type:      audit.JobTypeRequest,
+			}
+
+			itemIndexes[key] = append(
+				itemIndexes[key],
 				i,
 			)
 
@@ -70,8 +81,13 @@ func (items *LogItems) GetFindings(
 				continue
 			}
 
-			itemIndexes[requestID] = append(
-				itemIndexes[requestID],
+			key := logKey{
+				RequestID: requestID,
+				Type:      audit.JobTypeResponse,
+			}
+
+			itemIndexes[key] = append(
+				itemIndexes[key],
 				i,
 			)
 		}
@@ -176,34 +192,61 @@ func (items *LogItems) GetFindings(
 			)
 		}
 
-		requestID := ""
+		/*
+			A finding can apply to the request,
+			the response, or both.
+
+			Do not use else-if here.
+		*/
 
 		if finding.Metadata.Request != nil {
-			requestID =
-				finding.Metadata.Request.Metadata.RequestID
-		} else if finding.Metadata.Response != nil {
-			requestID =
-				finding.Metadata.Response.Metadata.RequestID
+			requestID :=
+				finding.Metadata.Request.
+					Metadata.
+					RequestID
+
+			if requestID != "" {
+				key := logKey{
+					RequestID: requestID,
+					Type:      audit.JobTypeRequest,
+				}
+
+				for _, index := range itemIndexes[key] {
+
+					item :=
+						&(*items)[index]
+
+					item.Findings = append(
+						item.Findings,
+						finding,
+					)
+				}
+			}
 		}
 
-		if requestID == "" {
-			continue
-		}
+		if finding.Metadata.Response != nil {
+			requestID :=
+				finding.Metadata.Response.
+					Metadata.
+					RequestID
 
-		indexes, ok :=
-			itemIndexes[requestID]
-		if !ok {
-			continue
-		}
+			if requestID != "" {
+				key := logKey{
+					RequestID: requestID,
+					Type:      audit.JobTypeResponse,
+				}
 
-		for _, index := range indexes {
-			item :=
-				&(*items)[index]
+				for _, index := range itemIndexes[key] {
 
-			item.Findings = append(
-				item.Findings,
-				finding,
-			)
+					item :=
+						&(*items)[index]
+
+					item.Findings = append(
+						item.Findings,
+						finding,
+					)
+				}
+			}
 		}
 	}
 

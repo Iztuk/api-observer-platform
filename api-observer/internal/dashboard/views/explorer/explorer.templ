@@ -1,39 +1,24 @@
 package explorer
 
-import (
-	"api-observer/internal/dashboard/views"
-	"api-observer/internal/nodes"
-	"api-observer/internal/query"
-	queryv1 "api-observer/proto/query/v1"
-	"fmt"
-	"time"
-)
+import "api-observer/internal/dashboard/views"
 
 templ ExplorerPage(
 	title string,
 	queryString string,
 	start string,
 	end string,
-	selectedNode string,
-	limit string,
-	nodeList []*nodes.Node,
-	logs []query.LogItem,
-	nextCursor int64,
-	hasMore bool,
 ) {
 	@views.Layout(title) {
-		<link rel="stylesheet" href="/static/css/explorer.css"/>
+		<link
+			rel="stylesheet"
+			href="/static/css/explorer.css"
+		/>
 		@ExplorerPageContent(
 			queryString,
 			start,
 			end,
-			selectedNode,
-			limit,
-			nodeList,
-			logs,
-			nextCursor,
-			hasMore,
 		)
+		@ExplorerStreamScript()
 	}
 }
 
@@ -41,12 +26,6 @@ templ ExplorerPageContent(
 	queryString string,
 	start string,
 	end string,
-	selectedNode string,
-	limit string,
-	nodeList []*nodes.Node,
-	logs []query.LogItem,
-	nextCursor int64,
-	hasMore bool,
 ) {
 	<div class="explorer-page">
 		<form
@@ -81,7 +60,11 @@ templ ExplorerPageContent(
 						stroke-linejoin="round"
 						aria-hidden="true"
 					>
-						<circle cx="11" cy="11" r="8"></circle>
+						<circle
+							cx="11"
+							cy="11"
+							r="8"
+						></circle>
 						<line
 							x1="21"
 							y1="21"
@@ -94,13 +77,11 @@ templ ExplorerPageContent(
 					</span>
 				</button>
 			</div>
-
 			<details class="explorer-advanced">
 				<summary>
 					<span>
 						Advanced Settings
 					</span>
-
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						width="16"
@@ -116,13 +97,11 @@ templ ExplorerPageContent(
 						<path d="m6 9 6 6 6-6"></path>
 					</svg>
 				</summary>
-
 				<div class="explorer-filters">
 					<div class="explorer-filter">
 						<label for="explorer-start">
 							Start Date
 						</label>
-
 						<input
 							type="datetime-local"
 							id="explorer-start"
@@ -130,12 +109,10 @@ templ ExplorerPageContent(
 							value={ start }
 						/>
 					</div>
-
 					<div class="explorer-filter">
 						<label for="explorer-end">
 							End Date
 						</label>
-
 						<input
 							type="datetime-local"
 							id="explorer-end"
@@ -143,79 +120,23 @@ templ ExplorerPageContent(
 							value={ end }
 						/>
 					</div>
-
-					<div class="explorer-filter">
-						<label for="explorer-node">
-							Node
-						</label>
-
-						<select
-							id="explorer-node"
-							name="node"
-						>
-							<option value="">
-								Select a node
-							</option>
-
-							for _, node := range nodeList {
-								<option
-									value={ node.ID }
-									selected?={ node.ID == selectedNode }
-								>
-									{ node.Name }
-								</option>
-							}
-						</select>
-					</div>
-
-					<div class="explorer-filter">
-						<label for="explorer-limit">
-							Limit
-						</label>
-
-						<select
-							id="explorer-limit"
-							name="limit"
-						>
-							<option
-								value="50"
-								selected?={ limit == "50" }
-							>
-								50
-							</option>
-
-							<option
-								value="100"
-								selected?={ limit == "100" }
-							>
-								100
-							</option>
-
-							<option
-								value="250"
-								selected?={ limit == "250" }
-							>
-								250
-							</option>
-
-							<option
-								value="500"
-								selected?={ limit == "500" }
-							>
-								500
-							</option>
-						</select>
-					</div>
 				</div>
 			</details>
 		</form>
-
 		<section class="explorer-results">
+			<div
+				id="explorer-stream-status"
+				class="explorer-stream-status"
+			>
+				Connecting...
+			</div>
 			<div class="explorer-table-container">
 				<table class="explorer-table">
 					<thead>
 						<tr>
+							<th></th>
 							<th>Timestamp</th>
+							<th>Node</th>
 							<th>Type</th>
 							<th>Method</th>
 							<th>Path</th>
@@ -223,24 +144,15 @@ templ ExplorerPageContent(
 							<th>Findings</th>
 						</tr>
 					</thead>
-
 					<tbody id="explorer-log-body">
-						if selectedNode == "" {
-							<tr>
-								<td
-									colspan="6"
-									class="explorer-empty"
-								>
-									Select a node and run a search.
-								</td>
-							</tr>
-						} else {
-							@ExplorerLogRows(
-								logs,
-								nextCursor,
-								hasMore,
-							)
-						}
+						<tr id="explorer-empty-row">
+							<td
+								colspan="8"
+								class="explorer-empty"
+							>
+								Loading logs...
+							</td>
+						</tr>
 					</tbody>
 				</table>
 			</div>
@@ -248,193 +160,341 @@ templ ExplorerPageContent(
 	</div>
 }
 
-templ ExplorerLogRows(
-	logs []query.LogItem,
-	nextCursor int64,
-	hasMore bool,
-) {
-	if len(logs) == 0 {
-		<tr>
-			<td
-				colspan="6"
-				class="explorer-empty"
-			>
-				No logs found.
-			</td>
-		</tr>
-	} else {
-		for i, log := range logs {
-			@ExplorerLogRow(
-				log,
-				i == len(logs)-1,
-				nextCursor,
-				hasMore,
-			)
-		}
+templ ExplorerStreamScript() {
+	<script>
+		(() => {
+			const form = document.getElementById("explorer-form");
 
-		if !hasMore {
-			<tr>
-				<td
-					colspan="6"
-					class="explorer-empty"
-				>
-					End of logs
-				</td>
-			</tr>
-		}
-	}
-}
+			const body = document.getElementById("explorer-log-body");
 
-templ ExplorerLogRow(
-	log query.LogItem,
-	isLast bool,
-	nextCursor int64,
-	hasMore bool,
-) {
-	if log.Log != nil {
-		switch event := log.Log.Event.(type) {
-			case *queryv1.Log_Request:
-				if event.Request != nil {
-					if isLast && hasMore {
-						<tr
-							class="explorer-log-row"
-							hx-get="/logs"
-							hx-trigger="revealed once"
-							hx-target="this"
-							hx-swap="afterend"
-							hx-include="#explorer-form"
-							hx-vals={ fmt.Sprintf(
-								`{"cursor":"%d"}`,
-								nextCursor,
-							) }
-						>
-							@ExplorerRequestColumns(
-								event.Request,
-								len(log.Findings),
-							)
-						</tr>
-					} else {
-						<tr class="explorer-log-row">
-							@ExplorerRequestColumns(
-								event.Request,
-								len(log.Findings),
-							)
-						</tr>
+			const statusElement = document.getElementById("explorer-stream-status");
+
+			if (!form || !body) {
+				return;
+			}
+
+			const params = new URLSearchParams(new FormData(form));
+
+			const source = new EventSource("/logs?" + params.toString());
+
+			let rowCount = 0;
+			let completedNodes = 0;
+			let failedNodes = 0;
+
+			const removeEmptyRow = () => {
+				const empty = document.getElementById("explorer-empty-row");
+
+				if (empty) {
+					empty.remove();
+				}
+			};
+
+			const createCell = (value) => {
+				const cell = document.createElement("td");
+
+				if (value !== undefined && value !== null) {
+					cell.textContent = String(value);
+				}
+
+				return cell;
+			};
+
+			const createDetailField = (label, value) => {
+				const field = document.createElement("div");
+
+				field.className = "explorer-detail-field";
+
+				const labelElement = document.createElement("span");
+
+				labelElement.className = "explorer-detail-label";
+
+				labelElement.textContent = label;
+
+				const valueElement = document.createElement("span");
+
+				valueElement.className = "explorer-detail-value";
+
+				valueElement.textContent = value ?? "";
+
+				field.append(labelElement, valueElement);
+
+				return field;
+			};
+
+			const createFinding = (finding) => {
+				const findingElement = document.createElement("div");
+
+				findingElement.className = "explorer-finding";
+
+				if (finding.severity) {
+					findingElement.dataset.severity = finding.severity;
+				}
+
+				const fields = document.createElement("div");
+
+				fields.className = "explorer-finding-fields";
+
+				fields.append(
+					createDetailField("Title", finding.title || "Finding"),
+
+					createDetailField("Severity", finding.severity || "Unknown"),
+
+					createDetailField("Message", finding.message || ""),
+				);
+
+				if (Array.isArray(finding.tags) && finding.tags.length > 0) {
+					fields.append(createDetailField("Tags", finding.tags.join(", ")));
+				}
+
+				findingElement.append(fields);
+
+				return findingElement;
+			};
+
+			const createDetailsRow = (log) => {
+				const detailsRow = document.createElement("tr");
+
+				detailsRow.className = "explorer-log-details-row";
+
+				detailsRow.hidden = true;
+
+				const cell = document.createElement("td");
+
+				cell.colSpan = 8;
+
+				const details = document.createElement("div");
+
+				details.className = "explorer-log-details";
+
+				const findings = Array.isArray(log.findings) ? log.findings : [];
+
+				const findingsSection = document.createElement("div");
+
+				findingsSection.className = "explorer-findings";
+
+				const title = document.createElement("div");
+
+				title.className = "explorer-findings-title";
+
+				title.textContent = "Findings (" + findings.length + ")";
+
+				findingsSection.append(title);
+
+				if (findings.length === 0) {
+					const empty = document.createElement("div");
+
+					empty.className = "explorer-findings-empty";
+
+					empty.textContent = "No findings for this log.";
+
+					findingsSection.append(empty);
+				} else {
+					for (const finding of findings) {
+						findingsSection.append(createFinding(finding));
 					}
 				}
 
-			case *queryv1.Log_Response:
-				if event.Response != nil {
-					if isLast && hasMore {
-						<tr
-							class="explorer-log-row"
-							hx-get="/logs"
-							hx-trigger="revealed once"
-							hx-target="this"
-							hx-swap="afterend"
-							hx-include="#explorer-form"
-							hx-vals={ fmt.Sprintf(
-								`{"cursor":"%d"}`,
-								nextCursor,
-							) }
-						>
-							@ExplorerResponseColumns(
-								event.Response,
-								len(log.Findings),
-							)
-						</tr>
-					} else {
-						<tr class="explorer-log-row">
-							@ExplorerResponseColumns(
-								event.Response,
-								len(log.Findings),
-							)
-						</tr>
+				details.append(findingsSection);
+
+				cell.append(details);
+
+				detailsRow.append(cell);
+
+				return detailsRow;
+			};
+
+			const appendRow = (log) => {
+				removeEmptyRow();
+
+				const findings = Array.isArray(log.findings) ? log.findings : [];
+
+				const row = document.createElement("tr");
+
+				row.className = "explorer-log-row";
+
+				row.tabIndex = 0;
+
+				row.setAttribute("role", "button");
+
+				row.setAttribute("aria-expanded", "false");
+
+				const timestamp = log.timestamp
+					? new Date(log.timestamp).toLocaleString()
+					: "";
+
+				const toggleCell = document.createElement("td");
+
+				toggleCell.className = "explorer-toggle-cell";
+
+				const toggle = document.createElement("span");
+
+				toggle.className = "explorer-row-toggle";
+
+				toggle.textContent = "›";
+
+				toggleCell.append(toggle);
+
+				row.append(
+					toggleCell,
+
+					createCell(timestamp),
+
+					createCell(log.node_name || ""),
+
+					createCell(log.type || ""),
+
+					createCell(log.method || ""),
+
+					createCell(log.path || ""),
+
+					createCell(log.status ?? ""),
+
+					createCell(findings.length),
+				);
+
+				const detailsRow = createDetailsRow(log);
+
+				const toggleDetails = () => {
+					const expanded = row.getAttribute("aria-expanded") === "true";
+
+					row.setAttribute("aria-expanded", expanded ? "false" : "true");
+
+					detailsRow.hidden = expanded;
+
+					toggle.textContent = expanded ? "›" : "⌄";
+				};
+
+				row.addEventListener("click", toggleDetails);
+
+				row.addEventListener("keydown", (event) => {
+					if (event.key === "Enter" || event.key === " ") {
+						event.preventDefault();
+
+						toggleDetails();
 					}
+				});
+
+				body.append(row, detailsRow);
+
+				rowCount++;
+			};
+
+			const updateStatus = (message) => {
+				if (!statusElement) {
+					return;
 				}
-		}
-	}
-}
 
-templ ExplorerRequestColumns(
-	request *queryv1.Request,
-	findingsCount int,
-) {
-	<td>
-		if request.Metadata != nil &&
-			request.Metadata.Timestamp != nil {
-			{
-				request.Metadata.Timestamp.
-					AsTime().
-					In(time.Local).
-					Format("2006-01-02 15:04:05")
-			}
-		}
-	</td>
+				statusElement.textContent = message;
+			};
 
-	<td>
-		Request
-	</td>
+			source.addEventListener("open", () => {
+				updateStatus("Streaming logs...");
+			});
 
-	<td>
-		{ request.Method }
-	</td>
+			source.addEventListener("logs", (event) => {
+				const logs = JSON.parse(event.data);
 
-	<td>
-		{ request.Url }
-	</td>
+				for (const log of logs) {
+					appendRow(log);
+				}
 
-	<td></td>
+				updateStatus("Streaming logs — " + rowCount + " matches");
+			});
 
-	<td>
-		{
-			fmt.Sprintf(
-				"%d",
-				findingsCount,
-			)
-		}
-	</td>
-}
+			source.addEventListener("node_done", () => {
+				completedNodes++;
 
-templ ExplorerResponseColumns(
-	response *queryv1.Response,
-	findingsCount int,
-) {
-	<td>
-		if response.Metadata != nil &&
-			response.Metadata.Timestamp != nil {
-			{
-				response.Metadata.Timestamp.
-					AsTime().
-					In(time.Local).
-					Format("2006-01-02 15:04:05")
-			}
-		}
-	</td>
+				const nodeLabel =
+					completedNodes === 1 ? "node complete" : "nodes complete";
 
-	<td>
-		Response
-	</td>
+				updateStatus(
+					"Streaming logs — " +
+						rowCount +
+						" matches, " +
+						completedNodes +
+						" " +
+						nodeLabel,
+				);
+			});
 
-	<td></td>
+			source.addEventListener("node_error", (event) => {
+				const result = JSON.parse(event.data);
 
-	<td></td>
+				failedNodes++;
 
-	<td>
-		{
-			fmt.Sprintf(
-				"%d",
-				response.StatusCode,
-			)
-		}
-	</td>
+				console.error(
+					"Collector stream failed:",
+					result.node_name || result.node_id,
+					result.message,
+				);
 
-	<td>
-		{
-			fmt.Sprintf(
-				"%d",
-				findingsCount,
-			)
-		}
-	</td>
+				const errorLabel = failedNodes === 1 ? "node error" : "node errors";
+
+				updateStatus(
+					"Streaming logs — " +
+						rowCount +
+						" matches, " +
+						failedNodes +
+						" " +
+						errorLabel,
+				);
+			});
+
+			source.addEventListener("done", (event) => {
+				const result = JSON.parse(event.data);
+
+				source.close();
+
+				if (rowCount === 0) {
+					removeEmptyRow();
+
+					const row = document.createElement("tr");
+
+					row.id = "explorer-empty-row";
+
+					const cell = document.createElement("td");
+
+					cell.colSpan = 8;
+
+					cell.className = "explorer-empty";
+
+					cell.textContent = "No logs found.";
+
+					row.append(cell);
+
+					body.append(row);
+				}
+
+				const nodeLabel = result.completed_nodes === 1 ? "node" : "nodes";
+
+				let message =
+					"Complete — " +
+					result.matches +
+					" matches across " +
+					result.completed_nodes +
+					" " +
+					nodeLabel;
+
+				if (result.failed_nodes > 0) {
+					message += " (" + result.failed_nodes + " failed)";
+				}
+
+				updateStatus(message);
+			});
+
+			source.onerror = () => {
+				if (source.readyState === EventSource.CLOSED) {
+					return;
+				}
+
+				updateStatus("Explorer stream disconnected.");
+
+				source.close();
+			};
+
+			window.addEventListener("beforeunload", () => {
+				source.close();
+			});
+		})();
+	</script>
 }

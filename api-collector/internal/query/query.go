@@ -2,442 +2,305 @@
 package query
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
-	"io"
-	"os"
 	"time"
 
-	"api-collector/internal/indexer"
-	"api-collector/internal/ingest"
-	queryv1 "api-collector/proto/query/v1"
+	"api-collector/internal/watcher"
+	ingestv1 "api-collector/proto/ingest/v1"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Server struct {
-	queryv1.UnimplementedLogServiceServer
+	ingestv1.UnimplementedIngestServiceServer
 
-	ctx context.Context
+	db *sql.DB
 
-	filePath string
-
-	tree *indexer.BPlusTree[
-		int64,
-		indexer.IndexBlock,
-	]
-
+	filePath    string
 	collectorID string
-
-	ingestClient *ingest.Client
 }
 
 func NewServer(
-	ctx context.Context,
+	db *sql.DB,
 	filePath string,
-	tree *indexer.BPlusTree[
-		int64,
-		indexer.IndexBlock,
-	],
 	collectorID string,
-	ingestClient *ingest.Client,
 ) *Server {
 	return &Server{
-		ctx:          ctx,
-		filePath:     filePath,
-		tree:         tree,
-		collectorID:  collectorID,
-		ingestClient: ingestClient,
+		db:          db,
+		filePath:    filePath,
+		collectorID: collectorID,
 	}
 }
 
-func (s *Server) Info(
-	ctx context.Context,
-	req *queryv1.ObserverInfo,
-) (*queryv1.InfoReply, error) {
-	if req == nil {
-		return nil,
-			status.Error(
-				codes.InvalidArgument,
-				"info request is nil",
-			)
-	}
-
-	if req.IngestAddress == "" {
-		return nil,
-			status.Error(
-				codes.InvalidArgument,
-				"ingest address is required",
-			)
-	}
-
-	if err := s.ingestClient.Connect(
-		s.ctx,
-		req.IngestAddress,
-	); err != nil {
-		return nil,
-			status.Errorf(
-				codes.Unavailable,
-				"failed to connect to Observer ingest service: %v",
-				err,
-			)
-	}
-
-	fmt.Printf(
-		"Connected to API Observer ingest service at %s\n",
-		req.IngestAddress,
-	)
-
-	return &queryv1.InfoReply{
-		CollectorId: s.collectorID,
-	}, nil
-}
-
-func (s *Server) Query(
-	params *queryv1.LogParams,
-	stream queryv1.LogService_QueryServer,
+func (s *Server) Logs(
+	req *ingestv1.LogRequest,
+	stream ingestv1.IngestService_LogsServer,
 ) error {
-	if params == nil {
-		return fmt.Errorf("missing query parameters")
+	if err := validateLogRequest(
+		req,
+	); err != nil {
+		return err
 	}
 
-	if params.StartDate == nil {
-		return fmt.Errorf("missing start date")
-	}
-
-	if params.EndDate == nil {
-		return fmt.Errorf("missing end date")
-	}
-
-	if err := params.StartDate.CheckValid(); err != nil {
-		return fmt.Errorf(
-			"invalid start date: %w",
-			err,
+	if s.db == nil {
+		return status.Error(
+			codes.FailedPrecondition,
+			"DuckDB is not initialized",
 		)
 	}
 
-	if err := params.EndDate.CheckValid(); err != nil {
-		return fmt.Errorf(
-			"invalid end date: %w",
-			err,
+	if s.filePath == "" {
+		return status.Error(
+			codes.FailedPrecondition,
+			"log file path is empty",
 		)
 	}
 
-	if s.tree == nil {
-		return fmt.Errorf(
-			"index tree is not initialized",
+	startTime := req.StartDate.
+		AsTime().
+		UTC()
+
+	endTime := req.EndDate.
+		AsTime().
+		UTC()
+
+	queryString := `
+		WITH logs AS (
+			SELECT
+				CAST(json AS VARCHAR) AS raw_json,
+
+				try_strptime(
+					json_extract_string(
+						json,
+						'$.transaction.time_stamp'
+					),
+					[
+						'%a %b %d %H:%M:%S %Y',
+						'%a %b %-d %H:%M:%S %Y'
+					]
+				) AS log_timestamp,
+
+				json_extract_string(
+					json,
+					'$.transaction.unique_id'
+				) AS request_id
+
+			FROM read_ndjson_objects(?)
 		)
-	}
 
-	startTime := params.StartDate.AsTime()
-	endTime := params.EndDate.AsTime()
+		SELECT
+			raw_json,
+			log_timestamp,
+			request_id
 
-	if endTime.Before(startTime) {
-		return fmt.Errorf(
-			"end date %s is before start date %s",
-			endTime,
-			startTime,
-		)
-	}
+		FROM logs
 
-	startTimestamp := startTime.UnixNano()
-	endTimestamp := endTime.UnixNano()
+		WHERE
+			log_timestamp IS NOT NULL
+			AND request_id IS NOT NULL
+			AND log_timestamp >= ?
+			AND log_timestamp <= ?
+	`
 
-	startBlock, endBlock, ok := s.findBlocks(
-		startTimestamp,
-		endTimestamp,
-	)
-	if !ok {
-		return nil
-	}
-
-	startOffset := startBlock.StartOffset
-	endOffset := endBlock.EndOffset
-
-	if params.Cursor > 0 &&
-		params.Cursor < endOffset {
-
-		endOffset = params.Cursor
-	}
-
-	if startOffset >= endOffset {
-		return nil
-	}
-
-	return s.streamLogs(
-		stream,
-		startOffset,
-		endOffset,
+	args := []any{
+		s.filePath,
 		startTime,
 		endTime,
-	)
-}
-
-func (s *Server) findBlocks(
-	startTimestamp int64,
-	endTimestamp int64,
-) (
-	indexer.IndexBlock,
-	indexer.IndexBlock,
-	bool,
-) {
-	var startBlock indexer.IndexBlock
-	var endBlock indexer.IndexBlock
-
-	_, floorStart, hasStart := s.tree.FindFloor(
-		startTimestamp,
-	)
-
-	_, floorEnd, hasEnd := s.tree.FindFloor(
-		endTimestamp,
-	)
-
-	entries := s.tree.Range(
-		startTimestamp,
-		endTimestamp,
-	)
-
-	if hasStart {
-		startBlock = floorStart
-	} else if len(entries) > 0 {
-		startBlock = entries[0].Value
-	} else {
-		return indexer.IndexBlock{},
-			indexer.IndexBlock{},
-			false
 	}
 
-	if hasEnd {
-		endBlock = floorEnd
-	} else if len(entries) > 0 {
-		endBlock = entries[len(entries)-1].Value
-	} else {
-		return indexer.IndexBlock{},
-			indexer.IndexBlock{},
-			false
+	if req.Cursor != nil {
+		cursorTime := req.Cursor.Timestamp.
+			AsTime().
+			UTC()
+
+		queryString += `
+			AND (
+				log_timestamp < ?
+				OR (
+					log_timestamp = ?
+					AND request_id < ?
+				)
+			)
+		`
+
+		args = append(
+			args,
+			cursorTime,
+			cursorTime,
+			req.Cursor.RequestId,
+		)
 	}
 
-	return startBlock,
-		endBlock,
-		true
-}
+	queryString += `
+		ORDER BY
+			log_timestamp DESC,
+			request_id DESC
+	`
 
-func (s *Server) streamLogs(
-	stream queryv1.LogService_QueryServer,
-	startOffset int64,
-	endOffset int64,
-	startTime time.Time,
-	endTime time.Time,
-) error {
-	file, err := os.Open(s.filePath)
+	rows, err := s.db.QueryContext(
+		stream.Context(),
+		queryString,
+		args...,
+	)
 	if err != nil {
-		return fmt.Errorf(
-			"failed to open log file %q: %w",
-			s.filePath,
+		return status.Errorf(
+			codes.Internal,
+			"failed to query ModSecurity logs: %v",
 			err,
 		)
 	}
-	defer file.Close()
+	defer rows.Close()
 
-	offset := endOffset
-
-	for offset > startOffset {
-		select {
-		case <-stream.Context().Done():
-			return stream.Context().Err()
-
-		default:
+	for rows.Next() {
+		if err := stream.Context().Err(); err != nil {
+			return err
 		}
 
-		lineBytes, lineStart, err := readPreviousLine(
-			file,
-			startOffset,
-			offset,
+		var (
+			rawJSON      string
+			logTimestamp time.Time
+			requestID    string
 		)
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
 
-			return fmt.Errorf(
-				"failed reading log file backwards from offset %d: %w",
-				offset,
+		if err := rows.Scan(
+			&rawJSON,
+			&logTimestamp,
+			&requestID,
+		); err != nil {
+			return status.Errorf(
+				codes.Internal,
+				"failed to scan ModSecurity log: %v",
 				err,
 			)
 		}
 
-		offset = lineStart
-
-		if len(lineBytes) == 0 {
-			continue
-		}
-
-		timestamp, err := indexer.ReadTimestamp(
-			lineBytes,
-		)
+		request, response, err :=
+			watcher.DecodeModSecLog(
+				[]byte(rawJSON),
+				s.collectorID,
+			)
 		if err != nil {
-			return fmt.Errorf(
-				"failed to read timestamp at offset %d: %w",
-				lineStart,
+			return status.Errorf(
+				codes.Internal,
+				"failed to decode ModSecurity transaction %q: %v",
+				requestID,
 				err,
 			)
 		}
 
-		logTime := time.Unix(
-			0,
-			timestamp,
-		)
+		transaction := &ingestv1.LogTransaction{
+			Request:  request,
+			Response: response,
 
-		if logTime.After(endTime) {
-			continue
-		}
+			Cursor: &ingestv1.LogCursor{
+				Timestamp: timestamppb.New(
+					logTimestamp.UTC(),
+				),
 
-		if logTime.Before(startTime) {
-			break
-		}
-
-		request, response, err := DecodeModSecLog(
-			lineBytes,
-			s.collectorID,
-		)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to decode ModSecurity log at offset %d: %w",
-				lineStart,
-				err,
-			)
-		}
-
-		nextCursor := lineStart
-
-		requestLog := &queryv1.Log{
-			Cursor: nextCursor,
-
-			Event: &queryv1.Log_Request{
-				Request: request,
-			},
-		}
-
-		responseLog := &queryv1.Log{
-			Cursor: nextCursor,
-
-			Event: &queryv1.Log_Response{
-				Response: response,
+				RequestId: requestID,
 			},
 		}
 
 		if err := stream.Send(
-			requestLog,
+			transaction,
 		); err != nil {
 			return fmt.Errorf(
-				"failed to stream request at offset %d: %w",
-				lineStart,
+				"failed to stream transaction %q: %w",
+				requestID,
 				err,
 			)
 		}
+	}
 
-		if err := stream.Send(
-			responseLog,
-		); err != nil {
-			return fmt.Errorf(
-				"failed to stream response at offset %d: %w",
-				lineStart,
-				err,
-			)
-		}
+	if err := rows.Err(); err != nil {
+		return status.Errorf(
+			codes.Internal,
+			"failed while reading ModSecurity logs: %v",
+			err,
+		)
 	}
 
 	return nil
 }
 
-func readPreviousLine(
-	file *os.File,
-	startOffset int64,
-	endOffset int64,
-) (
-	[]byte,
-	int64,
-	error,
-) {
-	if endOffset <= startOffset {
-		return nil,
-			startOffset,
-			io.EOF
-	}
-
-	cursor := endOffset
-
-	lastByte := make(
-		[]byte,
-		1,
-	)
-
-	if _, err := file.ReadAt(
-		lastByte,
-		cursor-1,
-	); err != nil {
-		return nil,
-			startOffset,
-			err
-	}
-
-	if lastByte[0] == '\n' {
-		cursor--
-	}
-
-	lineEnd := cursor
-
-	for cursor > startOffset {
-		cursor--
-
-		b := make(
-			[]byte,
-			1,
+func validateLogRequest(
+	req *ingestv1.LogRequest,
+) error {
+	if req == nil {
+		return status.Error(
+			codes.InvalidArgument,
+			"log request is nil",
 		)
+	}
 
-		if _, err := file.ReadAt(
-			b,
-			cursor,
-		); err != nil {
-			return nil,
-				startOffset,
-				err
+	if req.StartDate == nil {
+		return status.Error(
+			codes.InvalidArgument,
+			"start date is required",
+		)
+	}
+
+	if req.EndDate == nil {
+		return status.Error(
+			codes.InvalidArgument,
+			"end date is required",
+		)
+	}
+
+	if err := req.StartDate.CheckValid(); err != nil {
+		return status.Errorf(
+			codes.InvalidArgument,
+			"invalid start date: %v",
+			err,
+		)
+	}
+
+	if err := req.EndDate.CheckValid(); err != nil {
+		return status.Errorf(
+			codes.InvalidArgument,
+			"invalid end date: %v",
+			err,
+		)
+	}
+
+	startTime := req.StartDate.AsTime()
+	endTime := req.EndDate.AsTime()
+
+	if endTime.Before(
+		startTime,
+	) {
+		return status.Error(
+			codes.InvalidArgument,
+			"end date must be after start date",
+		)
+	}
+
+	if req.Cursor != nil {
+		if req.Cursor.Timestamp == nil {
+			return status.Error(
+				codes.InvalidArgument,
+				"cursor timestamp is required",
+			)
 		}
 
-		if b[0] == '\n' {
-			cursor++
-			break
+		if err := req.Cursor.Timestamp.CheckValid(); err != nil {
+			return status.Errorf(
+				codes.InvalidArgument,
+				"invalid cursor timestamp: %v",
+				err,
+			)
+		}
+
+		if req.Cursor.RequestId == "" {
+			return status.Error(
+				codes.InvalidArgument,
+				"cursor request ID is required",
+			)
 		}
 	}
 
-	if cursor < startOffset {
-		cursor = startOffset
-	}
-
-	lineLength := lineEnd - cursor
-
-	if lineLength <= 0 {
-		return nil,
-			cursor,
-			nil
-	}
-
-	lineBytes := make(
-		[]byte,
-		lineLength,
-	)
-
-	if _, err := file.ReadAt(
-		lineBytes,
-		cursor,
-	); err != nil {
-		return nil,
-			cursor,
-			err
-	}
-
-	return lineBytes,
-		cursor,
-		nil
+	return nil
 }

@@ -252,6 +252,14 @@
   overflow: hidden;
 }
 
+.explorer-stream-status {
+  flex-shrink: 0;
+
+  color: var(--muted-text-color);
+
+  font-size: 0.8rem;
+}
+
 /* =========================================
    Results Header
 ========================================= */
@@ -301,7 +309,7 @@
 
 .explorer-table {
   width: 100%;
-  min-width: 850px;
+  min-width: 900px;
 
   border-collapse: separate;
   border-spacing: 0;
@@ -315,7 +323,7 @@
 .explorer-table thead {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 
   background: var(--sidebar-background);
 }
@@ -341,18 +349,177 @@
   vertical-align: middle;
 }
 
-.explorer-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.explorer-table tbody tr:hover:not(:has(.explorer-empty)) {
-  background: var(--hover-background);
-}
-
 .explorer-table td,
 .explorer-table th {
   max-width: 400px;
   overflow-wrap: anywhere;
+}
+
+/* =========================================
+   Expandable Log Row
+========================================= */
+
+.explorer-log-row {
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.explorer-log-row:hover {
+  background: var(--hover-background);
+}
+
+.explorer-log-row:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: -2px;
+}
+
+.explorer-log-row[aria-expanded="true"] {
+  background: var(--hover-background);
+}
+
+.explorer-toggle-cell {
+  width: 2rem;
+  min-width: 2rem;
+  max-width: 2rem;
+
+  padding-right: 0.25rem !important;
+
+  text-align: center;
+}
+
+.explorer-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 1.25rem;
+  height: 1.25rem;
+
+  color: var(--muted-text-color);
+
+  font-size: 1.25rem;
+  line-height: 1;
+
+  user-select: none;
+
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
+}
+
+.explorer-log-row:hover .explorer-row-toggle,
+.explorer-log-row[aria-expanded="true"] .explorer-row-toggle {
+  color: var(--text-color);
+}
+
+/* =========================================
+   Expanded Detail Row
+========================================= */
+
+.explorer-log-details-row {
+  background: var(--sidebar-background);
+}
+
+.explorer-log-details-row[hidden] {
+  display: none;
+}
+
+.explorer-log-details-row > td {
+  padding: 0;
+
+  border-bottom: 1px solid var(--border-color);
+}
+
+.explorer-log-details {
+  padding: 1rem 1.25rem 1.25rem;
+
+  border-left: 3px solid var(--border-color);
+}
+
+/* =========================================
+   Finding Detail Fields
+========================================= */
+
+.explorer-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+
+  min-width: 0;
+}
+
+.explorer-detail-label {
+  color: var(--muted-text-color);
+
+  font-size: 0.7rem;
+  font-weight: 600;
+
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.explorer-detail-value {
+  color: var(--text-color);
+
+  font-size: 0.85rem;
+  line-height: 1.45;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================================
+   Findings
+========================================= */
+
+.explorer-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.explorer-findings-title {
+  color: var(--text-color);
+
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.explorer-findings-empty {
+  padding: 0.75rem;
+
+  color: var(--muted-text-color);
+  background: var(--background);
+
+  border: 1px dashed var(--border-color);
+  border-radius: 0.375rem;
+
+  font-size: 0.8rem;
+}
+
+/* =========================================
+   Finding Card
+========================================= */
+
+.explorer-finding {
+  padding: 1rem;
+
+  background: var(--background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+}
+
+.explorer-finding-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+}
+
+.explorer-finding-fields .explorer-detail-field:nth-child(3) {
+  grid-column: 1 / -1;
 }
 
 /* =========================================
@@ -388,6 +555,18 @@
   }
 
   .explorer-table {
-    min-width: 750px;
+    min-width: 800px;
+  }
+
+  .explorer-log-details {
+    padding: 0.85rem;
+  }
+
+  .explorer-finding-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .explorer-finding-fields .explorer-detail-field:nth-child(3) {
+    grid-column: auto;
   }
 }

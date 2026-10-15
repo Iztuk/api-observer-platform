@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	IngestService_Ingest_FullMethodName = "/apiobserver.ingest.v1.IngestService/Ingest"
+	IngestService_Logs_FullMethodName   = "/apiobserver.ingest.v1.IngestService/Logs"
 )
 
 // IngestServiceClient is the client API for IngestService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type IngestServiceClient interface {
 	Ingest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[Record, IngestAck], error)
+	Logs(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogTransaction], error)
 }
 
 type ingestServiceClient struct {
@@ -50,11 +52,31 @@ func (c *ingestServiceClient) Ingest(ctx context.Context, opts ...grpc.CallOptio
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type IngestService_IngestClient = grpc.BidiStreamingClient[Record, IngestAck]
 
+func (c *ingestServiceClient) Logs(ctx context.Context, in *LogRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogTransaction], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &IngestService_ServiceDesc.Streams[1], IngestService_Logs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LogRequest, LogTransaction]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type IngestService_LogsClient = grpc.ServerStreamingClient[LogTransaction]
+
 // IngestServiceServer is the server API for IngestService service.
 // All implementations must embed UnimplementedIngestServiceServer
 // for forward compatibility.
 type IngestServiceServer interface {
 	Ingest(grpc.BidiStreamingServer[Record, IngestAck]) error
+	Logs(*LogRequest, grpc.ServerStreamingServer[LogTransaction]) error
 	mustEmbedUnimplementedIngestServiceServer()
 }
 
@@ -67,6 +89,9 @@ type UnimplementedIngestServiceServer struct{}
 
 func (UnimplementedIngestServiceServer) Ingest(grpc.BidiStreamingServer[Record, IngestAck]) error {
 	return status.Error(codes.Unimplemented, "method Ingest not implemented")
+}
+func (UnimplementedIngestServiceServer) Logs(*LogRequest, grpc.ServerStreamingServer[LogTransaction]) error {
+	return status.Error(codes.Unimplemented, "method Logs not implemented")
 }
 func (UnimplementedIngestServiceServer) mustEmbedUnimplementedIngestServiceServer() {}
 func (UnimplementedIngestServiceServer) testEmbeddedByValue()                       {}
@@ -96,6 +121,17 @@ func _IngestService_Ingest_Handler(srv interface{}, stream grpc.ServerStream) er
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type IngestService_IngestServer = grpc.BidiStreamingServer[Record, IngestAck]
 
+func _IngestService_Logs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(LogRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(IngestServiceServer).Logs(m, &grpc.GenericServerStream[LogRequest, LogTransaction]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type IngestService_LogsServer = grpc.ServerStreamingServer[LogTransaction]
+
 // IngestService_ServiceDesc is the grpc.ServiceDesc for IngestService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -109,6 +145,11 @@ var IngestService_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _IngestService_Ingest_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "Logs",
+			Handler:       _IngestService_Logs_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "proto/ingest/v1/ingest.proto",

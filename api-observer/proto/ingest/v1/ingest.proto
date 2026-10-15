@@ -8,6 +8,7 @@ import "google/protobuf/timestamp.proto";
 
 service IngestService {
   rpc Ingest(stream Record) returns (stream IngestAck);
+  rpc Logs(LogRequest) returns (stream LogTransaction);
 }
 
 message Record {
@@ -61,5 +62,24 @@ message IngestAck {
   IngestStatus status = 2;
   string message = 3;
   bool retryable = 4;
+}
+
+message LogRequest {
+  google.protobuf.Timestamp start_date = 1;
+  google.protobuf.Timestamp end_date = 2;
+
+  LogCursor cursor = 3;
+}
+
+message LogCursor {
+  google.protobuf.Timestamp timestamp = 1;
+  string request_id = 2;
+}
+
+message LogTransaction {
+  Request request = 1;
+  Response response = 2;
+
+  LogCursor cursor = 3;
 }
 
