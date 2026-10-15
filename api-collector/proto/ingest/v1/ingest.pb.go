@@ -77,6 +77,7 @@ type Record struct {
 	//
 	//	*Record_Request
 	//	*Record_Response
+	//	*Record_Heartbeat
 	Event         isRecord_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -137,6 +138,15 @@ func (x *Record) GetResponse() *Response {
 	return nil
 }
 
+func (x *Record) GetHeartbeat() *Heartbeat {
+	if x != nil {
+		if x, ok := x.Event.(*Record_Heartbeat); ok {
+			return x.Heartbeat
+		}
+	}
+	return nil
+}
+
 type isRecord_Event interface {
 	isRecord_Event()
 }
@@ -149,9 +159,67 @@ type Record_Response struct {
 	Response *Response `protobuf:"bytes,2,opt,name=response,proto3,oneof"`
 }
 
+type Record_Heartbeat struct {
+	Heartbeat *Heartbeat `protobuf:"bytes,3,opt,name=heartbeat,proto3,oneof"`
+}
+
 func (*Record_Request) isRecord_Event() {}
 
 func (*Record_Response) isRecord_Event() {}
+
+func (*Record_Heartbeat) isRecord_Event() {}
+
+type Heartbeat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CollectorId   string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Heartbeat) Reset() {
+	*x = Heartbeat{}
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Heartbeat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Heartbeat) ProtoMessage() {}
+
+func (x *Heartbeat) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Heartbeat.ProtoReflect.Descriptor instead.
+func (*Heartbeat) Descriptor() ([]byte, []int) {
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Heartbeat) GetCollectorId() string {
+	if x != nil {
+		return x.CollectorId
+	}
+	return ""
+}
+
+func (x *Heartbeat) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
 
 type Metadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -164,7 +232,7 @@ type Metadata struct {
 
 func (x *Metadata) Reset() {
 	*x = Metadata{}
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[1]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -176,7 +244,7 @@ func (x *Metadata) String() string {
 func (*Metadata) ProtoMessage() {}
 
 func (x *Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[1]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -189,7 +257,7 @@ func (x *Metadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Metadata.ProtoReflect.Descriptor instead.
 func (*Metadata) Descriptor() ([]byte, []int) {
-	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{1}
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Metadata) GetRequestId() string {
@@ -222,7 +290,7 @@ type HeaderValues struct {
 
 func (x *HeaderValues) Reset() {
 	*x = HeaderValues{}
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[2]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -234,7 +302,7 @@ func (x *HeaderValues) String() string {
 func (*HeaderValues) ProtoMessage() {}
 
 func (x *HeaderValues) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[2]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -247,7 +315,7 @@ func (x *HeaderValues) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeaderValues.ProtoReflect.Descriptor instead.
 func (*HeaderValues) Descriptor() ([]byte, []int) {
-	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{2}
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *HeaderValues) GetValues() []string {
@@ -271,7 +339,7 @@ type Request struct {
 
 func (x *Request) Reset() {
 	*x = Request{}
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[3]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -283,7 +351,7 @@ func (x *Request) String() string {
 func (*Request) ProtoMessage() {}
 
 func (x *Request) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[3]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -296,7 +364,7 @@ func (x *Request) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Request.ProtoReflect.Descriptor instead.
 func (*Request) Descriptor() ([]byte, []int) {
-	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{3}
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Request) GetMethod() string {
@@ -354,7 +422,7 @@ type Response struct {
 
 func (x *Response) Reset() {
 	*x = Response{}
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[4]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -366,7 +434,7 @@ func (x *Response) String() string {
 func (*Response) ProtoMessage() {}
 
 func (x *Response) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[4]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -379,7 +447,7 @@ func (x *Response) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Response.ProtoReflect.Descriptor instead.
 func (*Response) Descriptor() ([]byte, []int) {
-	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{4}
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Response) GetStatusCode() int32 {
@@ -429,7 +497,7 @@ type IngestAck struct {
 
 func (x *IngestAck) Reset() {
 	*x = IngestAck{}
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[5]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +509,7 @@ func (x *IngestAck) String() string {
 func (*IngestAck) ProtoMessage() {}
 
 func (x *IngestAck) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[5]
+	mi := &file_proto_ingest_v1_ingest_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +522,7 @@ func (x *IngestAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IngestAck.ProtoReflect.Descriptor instead.
 func (*IngestAck) Descriptor() ([]byte, []int) {
-	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{5}
+	return file_proto_ingest_v1_ingest_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *IngestAck) GetRecordId() string {
@@ -489,11 +557,15 @@ var File_proto_ingest_v1_ingest_proto protoreflect.FileDescriptor
 
 const file_proto_ingest_v1_ingest_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/ingest/v1/ingest.proto\x12\x15apiobserver.ingest.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8c\x01\n" +
+	"\x1cproto/ingest/v1/ingest.proto\x12\x15apiobserver.ingest.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xce\x01\n" +
 	"\x06Record\x12:\n" +
 	"\arequest\x18\x01 \x01(\v2\x1e.apiobserver.ingest.v1.RequestH\x00R\arequest\x12=\n" +
-	"\bresponse\x18\x02 \x01(\v2\x1f.apiobserver.ingest.v1.ResponseH\x00R\bresponseB\a\n" +
-	"\x05event\"{\n" +
+	"\bresponse\x18\x02 \x01(\v2\x1f.apiobserver.ingest.v1.ResponseH\x00R\bresponse\x12@\n" +
+	"\theartbeat\x18\x03 \x01(\v2 .apiobserver.ingest.v1.HeartbeatH\x00R\theartbeatB\a\n" +
+	"\x05event\"h\n" +
+	"\tHeartbeat\x12!\n" +
+	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x128\n" +
+	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"{\n" +
 	"\bMetadata\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x16\n" +
@@ -546,37 +618,40 @@ func file_proto_ingest_v1_ingest_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_ingest_v1_ingest_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_ingest_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_proto_ingest_v1_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_proto_ingest_v1_ingest_proto_goTypes = []any{
 	(IngestStatus)(0),             // 0: apiobserver.ingest.v1.IngestStatus
 	(*Record)(nil),                // 1: apiobserver.ingest.v1.Record
-	(*Metadata)(nil),              // 2: apiobserver.ingest.v1.Metadata
-	(*HeaderValues)(nil),          // 3: apiobserver.ingest.v1.HeaderValues
-	(*Request)(nil),               // 4: apiobserver.ingest.v1.Request
-	(*Response)(nil),              // 5: apiobserver.ingest.v1.Response
-	(*IngestAck)(nil),             // 6: apiobserver.ingest.v1.IngestAck
-	nil,                           // 7: apiobserver.ingest.v1.Request.HeadersEntry
-	nil,                           // 8: apiobserver.ingest.v1.Response.HeadersEntry
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*Heartbeat)(nil),             // 2: apiobserver.ingest.v1.Heartbeat
+	(*Metadata)(nil),              // 3: apiobserver.ingest.v1.Metadata
+	(*HeaderValues)(nil),          // 4: apiobserver.ingest.v1.HeaderValues
+	(*Request)(nil),               // 5: apiobserver.ingest.v1.Request
+	(*Response)(nil),              // 6: apiobserver.ingest.v1.Response
+	(*IngestAck)(nil),             // 7: apiobserver.ingest.v1.IngestAck
+	nil,                           // 8: apiobserver.ingest.v1.Request.HeadersEntry
+	nil,                           // 9: apiobserver.ingest.v1.Response.HeadersEntry
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_proto_ingest_v1_ingest_proto_depIdxs = []int32{
-	4,  // 0: apiobserver.ingest.v1.Record.request:type_name -> apiobserver.ingest.v1.Request
-	5,  // 1: apiobserver.ingest.v1.Record.response:type_name -> apiobserver.ingest.v1.Response
-	9,  // 2: apiobserver.ingest.v1.Metadata.timestamp:type_name -> google.protobuf.Timestamp
-	7,  // 3: apiobserver.ingest.v1.Request.headers:type_name -> apiobserver.ingest.v1.Request.HeadersEntry
-	2,  // 4: apiobserver.ingest.v1.Request.metadata:type_name -> apiobserver.ingest.v1.Metadata
-	8,  // 5: apiobserver.ingest.v1.Response.headers:type_name -> apiobserver.ingest.v1.Response.HeadersEntry
-	2,  // 6: apiobserver.ingest.v1.Response.metadata:type_name -> apiobserver.ingest.v1.Metadata
-	0,  // 7: apiobserver.ingest.v1.IngestAck.status:type_name -> apiobserver.ingest.v1.IngestStatus
-	3,  // 8: apiobserver.ingest.v1.Request.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
-	3,  // 9: apiobserver.ingest.v1.Response.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
-	1,  // 10: apiobserver.ingest.v1.IngestService.Ingest:input_type -> apiobserver.ingest.v1.Record
-	6,  // 11: apiobserver.ingest.v1.IngestService.Ingest:output_type -> apiobserver.ingest.v1.IngestAck
-	11, // [11:12] is the sub-list for method output_type
-	10, // [10:11] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	5,  // 0: apiobserver.ingest.v1.Record.request:type_name -> apiobserver.ingest.v1.Request
+	6,  // 1: apiobserver.ingest.v1.Record.response:type_name -> apiobserver.ingest.v1.Response
+	2,  // 2: apiobserver.ingest.v1.Record.heartbeat:type_name -> apiobserver.ingest.v1.Heartbeat
+	10, // 3: apiobserver.ingest.v1.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	10, // 4: apiobserver.ingest.v1.Metadata.timestamp:type_name -> google.protobuf.Timestamp
+	8,  // 5: apiobserver.ingest.v1.Request.headers:type_name -> apiobserver.ingest.v1.Request.HeadersEntry
+	3,  // 6: apiobserver.ingest.v1.Request.metadata:type_name -> apiobserver.ingest.v1.Metadata
+	9,  // 7: apiobserver.ingest.v1.Response.headers:type_name -> apiobserver.ingest.v1.Response.HeadersEntry
+	3,  // 8: apiobserver.ingest.v1.Response.metadata:type_name -> apiobserver.ingest.v1.Metadata
+	0,  // 9: apiobserver.ingest.v1.IngestAck.status:type_name -> apiobserver.ingest.v1.IngestStatus
+	4,  // 10: apiobserver.ingest.v1.Request.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
+	4,  // 11: apiobserver.ingest.v1.Response.HeadersEntry.value:type_name -> apiobserver.ingest.v1.HeaderValues
+	1,  // 12: apiobserver.ingest.v1.IngestService.Ingest:input_type -> apiobserver.ingest.v1.Record
+	7,  // 13: apiobserver.ingest.v1.IngestService.Ingest:output_type -> apiobserver.ingest.v1.IngestAck
+	13, // [13:14] is the sub-list for method output_type
+	12, // [12:13] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_proto_ingest_v1_ingest_proto_init() }
@@ -587,6 +662,7 @@ func file_proto_ingest_v1_ingest_proto_init() {
 	file_proto_ingest_v1_ingest_proto_msgTypes[0].OneofWrappers = []any{
 		(*Record_Request)(nil),
 		(*Record_Response)(nil),
+		(*Record_Heartbeat)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -594,7 +670,7 @@ func file_proto_ingest_v1_ingest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_ingest_v1_ingest_proto_rawDesc), len(file_proto_ingest_v1_ingest_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

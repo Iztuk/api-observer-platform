@@ -1,345 +1,390 @@
-// Package watcher handles file watching
+// Package watcher handles file watching.
 package watcher
 
 import (
-	"api-collector/internal/indexer"
-	"api-collector/internal/ingest"
-	"api-collector/internal/query"
-	ingestv1 "api-collector/proto/ingest/v1"
-	queryv1 "api-collector/proto/query/v1"
-
-	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
+	"log"
 	"os"
+	"strconv"
+	"strings"
 	"time"
+
+	"api-collector/internal/ingest"
+	ingestv1 "api-collector/proto/ingest/v1"
+
+	"github.com/nxadm/tail"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+const modSecTimestampLayout = "Mon Jan _2 15:04:05 2006"
+
+type ModSecLog struct {
+	Transaction struct {
+		TimeStamp string `json:"time_stamp"`
+		UniqueID  string `json:"unique_id"`
+
+		Request struct {
+			Method  string        `json:"method"`
+			URI     string        `json:"uri"`
+			Headers ModSecHeaders `json:"headers"`
+			Body    string        `json:"body"`
+		} `json:"request"`
+
+		Response struct {
+			HTTPCode int32         `json:"http_code"`
+			Headers  ModSecHeaders `json:"headers"`
+			Body     string        `json:"body"`
+		} `json:"response"`
+	} `json:"transaction"`
+}
+
+type ModSecHeaders map[string][]string
 
 func Watch(
 	ctx context.Context,
 	filePath string,
-	lastBlock indexer.IndexBlock,
-	tree *indexer.BPlusTree[int64, indexer.IndexBlock],
 	ingestClient *ingest.Client,
 	collectorID string,
 ) error {
-	file, err := os.Open(filePath)
+	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf(
-			"failed to open file %q: %w",
-			filePath,
-			err,
-		)
-	}
-	defer file.Close()
-
-	startOffset := lastBlock.EndOffset
-
-	if _, err := file.Seek(
-		startOffset,
-		io.SeekStart,
-	); err != nil {
-		return fmt.Errorf(
-			"failed to seek to offset %d: %w",
-			startOffset,
+			"failed to get file info: %w",
 			err,
 		)
 	}
 
-	reader := bufio.NewReader(file)
+	t, err := tail.TailFile(
+		filePath,
+		tail.Config{
+			Location: &tail.SeekInfo{
+				Offset: fileInfo.Size(),
+			},
 
-	var numLines uint32
-
-	offset := startOffset
-	blockSize := lastBlock.BlockSize
-
-	blocks := make(
-		[]indexer.IndexBlock,
-		0,
+			ReOpen:        true,
+			Follow:        true,
+			CompleteLines: true,
+		},
 	)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to start file tailing: %w",
+			err,
+		)
+	}
+	defer t.Cleanup()
 
-	var block indexer.IndexBlock
+	heartbeatTicker := time.NewTicker(15 * time.Second)
+	defer heartbeatTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil
 
-		default:
-			lineStart := offset
-
-			lineBytes, err :=
-				reader.ReadBytes('\n')
-
-			if len(lineBytes) > 0 {
-				if lineBytes[len(lineBytes)-1] != '\n' {
-					if _, seekErr := file.Seek(
-						lineStart,
-						io.SeekStart,
-					); seekErr != nil {
-						return seekErr
-					}
-
-					reader.Reset(file)
-
-					time.Sleep(
-						250 * time.Millisecond,
-					)
-
-					continue
-				}
-
-				if ingestClient.Connected() {
-					request, response, decodeErr :=
-						query.DecodeModSecLog(
-							lineBytes,
-							collectorID,
-						)
-					if decodeErr != nil {
-						fmt.Printf(
-							"failed to decode ModSecurity log at offset %d: %v\n",
-							lineStart,
-							decodeErr,
-						)
-					} else {
-						requestRecord :=
-							&ingestv1.Record{
-								Event: &ingestv1.Record_Request{
-									Request: queryRequestToIngest(
-										request,
-									),
-								},
-							}
-
-						if _, sendErr :=
-							ingestClient.Send(
-								requestRecord,
-							); sendErr != nil {
-
-							fmt.Printf(
-								"failed to ingest request at offset %d: %v\n",
-								lineStart,
-								sendErr,
-							)
-						}
-
-						responseRecord :=
-							&ingestv1.Record{
-								Event: &ingestv1.Record_Response{
-									Response: queryResponseToIngest(
-										response,
-									),
-								},
-							}
-
-						if _, sendErr :=
-							ingestClient.Send(
-								responseRecord,
-							); sendErr != nil {
-
-							fmt.Printf(
-								"failed to ingest response at offset %d: %v\n",
-								lineStart,
-								sendErr,
-							)
-						}
-					}
-				}
-
-				numLines++
-
-				offset += int64(
-					len(lineBytes),
-				)
-
-				if numLines == 1 {
-					timestamp, err :=
-						indexer.ReadTimestamp(
-							lineBytes,
-						)
-					if err != nil {
-						return err
-					}
-
-					block =
-						indexer.IndexBlock{
-							TimestampStart: timestamp,
-
-							StartOffset: lineStart,
-
-							BlockSize: blockSize,
-						}
-				}
-
-				if numLines == blockSize {
-					timestamp, err :=
-						indexer.ReadTimestamp(
-							lineBytes,
-						)
-					if err != nil {
-						return err
-					}
-
-					block.TimestampEnd =
-						timestamp
-
-					block.EndOffset =
-						offset
-
-					tree.Insert(
-						block.TimestampStart,
-						block,
-					)
-
-					blocks = append(
-						blocks,
-						block,
-					)
-
-					numLines = 0
-				}
+		case <-heartbeatTicker.C:
+			if err := ingestClient.Heartbeat(ctx, collectorID); err != nil {
+				return fmt.Errorf("failed to send heartbeat: %w", err)
 			}
 
-			if err != nil {
-				if err == io.EOF {
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
+		case line, ok := <-t.Lines:
+			if !ok {
+				return nil
+			}
 
-					case <-time.After(
-						250 * time.Millisecond,
-					):
-						if len(blocks) > 0 {
-							if err :=
-								indexer.AppendIndexFile(
-									fmt.Sprintf(
-										"%s.idx",
-										filePath,
-									),
-									blocks,
-								); err != nil {
+			if line == nil {
+				continue
+			}
 
-								return err
-							}
-
-							blocks =
-								make(
-									[]indexer.IndexBlock,
-									0,
-								)
-						}
-
-						continue
-					}
-				}
-
+			if line.Err != nil {
 				return fmt.Errorf(
-					"failed reading file at offset %d: %w",
-					offset,
+					"failed while tailing %q: %w",
+					filePath,
+					line.Err,
+				)
+			}
+
+			if line.Text == "" {
+				continue
+			}
+
+			request, response, err := DecodeModSecLog(
+				[]byte(line.Text),
+				collectorID,
+			)
+			if err != nil {
+				return fmt.Errorf(
+					"failed to decode ModSecurity log: %w",
 					err,
 				)
+			}
+
+			if err := sendTransaction(
+				ingestClient,
+				request,
+				response,
+			); err != nil {
+				log.Printf(
+					"ingest connection lost: %v\n",
+					err,
+				)
+
+				if err := ingestClient.ReconnectWithBackoff(
+					ctx,
+				); err != nil {
+					return fmt.Errorf(
+						"failed to reconnect to API Observer: %w",
+						err,
+					)
+				}
+
+				log.Println(
+					"ingest connection restored; resuming watcher",
+				)
+
+				continue
 			}
 		}
 	}
 }
 
-func queryRequestToIngest(
-	request *queryv1.Request,
-) *ingestv1.Request {
-	if request == nil {
-		return nil
+func sendTransaction(
+	ingestClient *ingest.Client,
+	request *ingestv1.Request,
+	response *ingestv1.Response,
+) error {
+	if request != nil {
+		record := &ingestv1.Record{
+			Event: &ingestv1.Record_Request{
+				Request: request,
+			},
+		}
+
+		if _, err := ingestClient.Send(
+			record,
+		); err != nil {
+			return fmt.Errorf(
+				"failed to send request: %w",
+				err,
+			)
+		}
 	}
 
-	headers := make(
-		map[string]*ingestv1.HeaderValues,
-		len(request.Headers),
-	)
+	if response != nil {
+		record := &ingestv1.Record{
+			Event: &ingestv1.Record_Response{
+				Response: response,
+			},
+		}
 
-	for key, values := range request.Headers {
-
-		headers[key] =
-			&ingestv1.HeaderValues{
-				Values: append(
-					[]string(nil),
-					values.Values...,
-				),
-			}
+		if _, err := ingestClient.Send(
+			record,
+		); err != nil {
+			return fmt.Errorf(
+				"failed to send response: %w",
+				err,
+			)
+		}
 	}
 
-	var metadata *ingestv1.Metadata
-
-	if request.Metadata != nil {
-		metadata =
-			&ingestv1.Metadata{
-				RequestId: request.Metadata.RequestId,
-
-				Source: request.Metadata.Source,
-
-				Timestamp: request.Metadata.Timestamp,
-			}
-	}
-
-	return &ingestv1.Request{
-		Method: request.Method,
-
-		Url: request.Url,
-
-		Headers: headers,
-
-		Body: request.Body,
-
-		ContentLength: request.ContentLength,
-
-		Metadata: metadata,
-	}
+	return nil
 }
 
-func queryResponseToIngest(
-	response *queryv1.Response,
-) *ingestv1.Response {
-	if response == nil {
-		return nil
+func DecodeModSecLog(
+	line []byte,
+	collectorID string,
+) (
+	*ingestv1.Request,
+	*ingestv1.Response,
+	error,
+) {
+	var log ModSecLog
+
+	if err := json.Unmarshal(
+		line,
+		&log,
+	); err != nil {
+		return nil, nil, fmt.Errorf(
+			"failed to decode ModSecurity log: %w",
+			err,
+		)
+	}
+
+	transaction := log.Transaction
+
+	timestamp, err := time.Parse(
+		modSecTimestampLayout,
+		transaction.TimeStamp,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"failed to parse timestamp %q: %w",
+			transaction.TimeStamp,
+			err,
+		)
+	}
+
+	requestMetadata := &ingestv1.Metadata{
+		RequestId: transaction.UniqueID,
+		Source:    collectorID,
+		Timestamp: timestamppb.New(timestamp),
+	}
+
+	responseMetadata := &ingestv1.Metadata{
+		RequestId: transaction.UniqueID,
+		Source:    collectorID,
+		Timestamp: timestamppb.New(timestamp),
+	}
+
+	request := &ingestv1.Request{
+		Method: transaction.Request.Method,
+		Url:    transaction.Request.URI,
+
+		Headers: convertHeaders(
+			transaction.Request.Headers,
+		),
+
+		Body: transaction.Request.Body,
+
+		ContentLength: contentLength(
+			transaction.Request.Headers,
+			transaction.Request.Body,
+		),
+
+		Metadata: requestMetadata,
+	}
+
+	response := &ingestv1.Response{
+		StatusCode: transaction.Response.HTTPCode,
+
+		Headers: convertHeaders(
+			transaction.Response.Headers,
+		),
+
+		Body: transaction.Response.Body,
+
+		ContentLength: contentLength(
+			transaction.Response.Headers,
+			transaction.Response.Body,
+		),
+
+		Metadata: responseMetadata,
+	}
+
+	return request, response, nil
+}
+
+func convertHeaders(
+	headers ModSecHeaders,
+) map[string]*ingestv1.HeaderValues {
+	result := make(
+		map[string]*ingestv1.HeaderValues,
+		len(headers),
+	)
+
+	for name, values := range headers {
+		result[name] = &ingestv1.HeaderValues{
+			Values: append(
+				[]string(nil),
+				values...,
+			),
+		}
+	}
+
+	return result
+}
+
+func contentLength(
+	headers ModSecHeaders,
+	body string,
+) int64 {
+	for name, values := range headers {
+		if !strings.EqualFold(
+			name,
+			"Content-Length",
+		) {
+			continue
+		}
+
+		if len(values) == 0 {
+			break
+		}
+
+		length, err := strconv.ParseInt(
+			values[len(values)-1],
+			10,
+			64,
+		)
+		if err == nil {
+			return length
+		}
+	}
+
+	return int64(
+		len(
+			[]byte(body),
+		),
+	)
+}
+
+func (h *ModSecHeaders) UnmarshalJSON(
+	data []byte,
+) error {
+	decoder := json.NewDecoder(
+		bytes.NewReader(data),
+	)
+
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+
+	delim, ok := token.(json.Delim)
+	if !ok || delim != '{' {
+		return fmt.Errorf(
+			"expected headers object",
+		)
 	}
 
 	headers := make(
-		map[string]*ingestv1.HeaderValues,
-		len(response.Headers),
+		ModSecHeaders,
 	)
 
-	for key, values := range response.Headers {
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
 
-		headers[key] =
-			&ingestv1.HeaderValues{
-				Values: append(
-					[]string(nil),
-					values.Values...,
-				),
-			}
+		name, ok := token.(string)
+		if !ok {
+			return fmt.Errorf(
+				"invalid header name",
+			)
+		}
+
+		var value string
+
+		if err := decoder.Decode(
+			&value,
+		); err != nil {
+			return err
+		}
+
+		headers[name] = append(
+			headers[name],
+			value,
+		)
 	}
 
-	var metadata *ingestv1.Metadata
-
-	if response.Metadata != nil {
-		metadata =
-			&ingestv1.Metadata{
-				RequestId: response.Metadata.RequestId,
-
-				Source: response.Metadata.Source,
-
-				Timestamp: response.Metadata.Timestamp,
-			}
+	if _, err := decoder.Token(); err != nil {
+		return err
 	}
 
-	return &ingestv1.Response{
-		StatusCode: response.StatusCode,
+	*h = headers
 
-		Headers: headers,
-
-		Body: response.Body,
-
-		ContentLength: response.ContentLength,
-
-		Metadata: metadata,
-	}
+	return nil
 }

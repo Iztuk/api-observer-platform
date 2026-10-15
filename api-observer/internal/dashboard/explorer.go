@@ -20,6 +20,7 @@ import (
 const (
 	explorerDateTimeLayout = "2006-01-02T15:04"
 	defaultExplorerLimit   = 100
+	explorerBatchSize      = 256
 )
 
 type explorerParams struct {
@@ -77,9 +78,10 @@ func (h *Handler) ExplorerPage(
 			return
 		}
 
-		logs, nextCursor, hasMore, err = streamLogs(
+		logs, nextCursor, hasMore, err = h.streamLogs(
 			r.Context(),
 			node.Client,
+			params.NodeID,
 			params.Query,
 			params.Start,
 			params.End,
@@ -91,26 +93,6 @@ func (h *Handler) ExplorerPage(
 				w,
 				fmt.Sprintf(
 					"failed to retrieve logs: %v",
-					err,
-				),
-				http.StatusInternalServerError,
-			)
-
-			return
-		}
-
-		if err := logs.GetFindings(
-			r.Context(),
-			h.DB,
-			h.Config.FindingsLog,
-			params.NodeID,
-			params.Start.UnixNano(),
-			params.End.UnixNano(),
-		); err != nil {
-			http.Error(
-				w,
-				fmt.Sprintf(
-					"failed to retrieve log findings: %v",
 					err,
 				),
 				http.StatusInternalServerError,
@@ -186,9 +168,10 @@ func (h *Handler) ExplorerLogs(
 		return
 	}
 
-	logs, nextCursor, hasMore, err := streamLogs(
+	logs, nextCursor, hasMore, err := h.streamLogs(
 		r.Context(),
 		node.Client,
+		params.NodeID,
 		params.Query,
 		params.Start,
 		params.End,
@@ -200,26 +183,6 @@ func (h *Handler) ExplorerLogs(
 			w,
 			fmt.Sprintf(
 				"failed to retrieve logs: %v",
-				err,
-			),
-			http.StatusInternalServerError,
-		)
-
-		return
-	}
-
-	if err := logs.GetFindings(
-		r.Context(),
-		h.DB,
-		h.Config.FindingsLog,
-		params.NodeID,
-		params.Start.UnixNano(),
-		params.End.UnixNano(),
-	); err != nil {
-		http.Error(
-			w,
-			fmt.Sprintf(
-				"failed to retrieve log findings: %v",
 				err,
 			),
 			http.StatusInternalServerError,
@@ -354,9 +317,10 @@ func parseExplorerParams(
 	return params, nil
 }
 
-func streamLogs(
+func (h *Handler) streamLogs(
 	ctx context.Context,
 	client queryv1.LogServiceClient,
+	nodeID string,
 	queryString string,
 	start time.Time,
 	end time.Time,
@@ -407,17 +371,96 @@ func streamLogs(
 		limit,
 	)
 
-	nextCursor := startCursor
+	batch := make(
+		query.LogItems,
+		0,
+		explorerBatchSize,
+	)
 
+	nextCursor := startCursor
 	probing := false
+
+	processBatch := func() (
+		bool,
+		error,
+	) {
+		if len(batch) == 0 {
+			return false, nil
+		}
+
+		if err := batch.GetFindings(
+			ctx,
+			h.DB,
+			h.Config.FindingsLog,
+			nodeID,
+			start.UnixNano(),
+			end.UnixNano(),
+		); err != nil {
+			return false,
+				fmt.Errorf(
+					"failed to retrieve log findings: %w",
+					err,
+				)
+		}
+
+		for _, item := range batch {
+			matches, err := query.EvaluateExpression(
+				queryString,
+				expr,
+				item,
+			)
+			if err != nil {
+				return false,
+					fmt.Errorf(
+						"failed to evaluate log query: %w",
+						err,
+					)
+			}
+
+			if probing && matches {
+				return true, nil
+			}
+
+			if !probing && matches {
+				logs = append(
+					logs,
+					item,
+				)
+			}
+
+			switch item.Log.Event.(type) {
+			case *queryv1.Log_Response:
+				nextCursor = item.Log.Cursor
+
+				if !probing &&
+					limit > 0 &&
+					len(logs) >= limit {
+
+					probing = true
+				}
+			}
+		}
+
+		batch = batch[:0]
+
+		return false, nil
+	}
 
 	for {
 		logRecord, err := stream.Recv()
 
 		if err == io.EOF {
+			hasMore, processErr := processBatch()
+			if processErr != nil {
+				return logs,
+					nextCursor,
+					false,
+					processErr
+			}
+
 			return logs,
 				nextCursor,
-				false,
+				hasMore,
 				nil
 		}
 
@@ -431,51 +474,39 @@ func streamLogs(
 				)
 		}
 
-		item := query.LogItem{
-			Log: logRecord,
+		batch = append(
+			batch,
+			query.LogItem{
+				Log: logRecord,
+			},
+		)
+
+		_, isResponse :=
+			logRecord.Event.(*queryv1.Log_Response)
+
+		if !isResponse {
+			continue
 		}
 
-		matches, err := query.EvaluateExpression(
-			queryString,
-			expr,
-			item,
-		)
+		if len(batch) < explorerBatchSize {
+			continue
+		}
+
+		hasMore, err := processBatch()
 		if err != nil {
 			return logs,
 				nextCursor,
 				false,
-				fmt.Errorf(
-					"failed to evaluate log query: %w",
-					err,
-				)
+				err
 		}
 
-		if probing && matches {
+		if hasMore {
 			cancel()
 
 			return logs,
 				nextCursor,
 				true,
 				nil
-		}
-
-		if !probing && matches {
-			logs = append(
-				logs,
-				item,
-			)
-		}
-
-		switch logRecord.Event.(type) {
-		case *queryv1.Log_Response:
-			nextCursor = logRecord.Cursor
-
-			if !probing &&
-				limit > 0 &&
-				len(logs) >= limit {
-
-				probing = true
-			}
 		}
 	}
 }

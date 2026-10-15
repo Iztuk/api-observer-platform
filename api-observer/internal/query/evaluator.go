@@ -137,12 +137,12 @@ func evaluateComparison(
 			item,
 		)
 
-	// case "findings":
-	// 	return evaluateFindingsCount(
-	// 		queryString,
-	// 		expr,
-	// 		item,
-	// 	)
+	case "findings":
+		return evaluateFindingsCount(
+			queryString,
+			expr,
+			item,
+		)
 
 	default:
 		return false, newQueryError(
@@ -669,55 +669,55 @@ func evaluateTimestamp(
 	}
 }
 
-// func evaluateFindingsCount(
-// 	queryString string,
-// 	expr ComparisonExpression,
-// 	item LogItem,
-// ) (bool, error) {
-// 	expected, ok := expr.Value.Value.(int)
-// 	if !ok {
-// 		return false, newQueryError(
-// 			queryString,
-// 			expr.Value.Position,
-// 			fmt.Sprintf(
-// 				"field %q requires a numeric value",
-// 				expr.Field.Name,
-// 			),
-// 		)
-// 	}
-//
-// 	actual := len(
-// 		item.Findings,
-// 	)
-//
-// 	switch expr.Operator.Type {
-// 	case OperatorTypeEqual:
-// 		return actual == expected, nil
-//
-// 	case OperatorTypeNotEqual:
-// 		return actual != expected, nil
-//
-// 	case OperatorTypeGreater:
-// 		return actual > expected, nil
-//
-// 	case OperatorTypeGreaterEqual:
-// 		return actual >= expected, nil
-//
-// 	case OperatorTypeLess:
-// 		return actual < expected, nil
-//
-// 	case OperatorTypeLessEqual:
-// 		return actual <= expected, nil
-//
-// 	default:
-// 		return false, newQueryError(
-// 			queryString,
-// 			expr.Operator.Position,
-// 			fmt.Sprintf(
-// 				"operator %q is not supported for field %q; allowed operators are '=', '!=', '>', '>=', '<', '<='",
-// 				expr.Operator.Name,
-// 				expr.Field.Name,
-// 			),
-// 		)
-// 	}
-// }
+func evaluateFindingsCount(
+	queryString string,
+	expr ComparisonExpression,
+	item LogItem,
+) (bool, error) {
+	expected, ok := expr.Value.Value.(int)
+	if !ok {
+		return false, newQueryError(
+			queryString,
+			expr.Value.Position,
+			fmt.Sprintf(
+				"field %q requires a numeric value",
+				expr.Field.Name,
+			),
+		)
+	}
+
+	actual := len(
+		item.Findings,
+	)
+
+	switch expr.Operator.Type {
+	case OperatorTypeEqual:
+		return actual == expected, nil
+
+	case OperatorTypeNotEqual:
+		return actual != expected, nil
+
+	case OperatorTypeGreater:
+		return actual > expected, nil
+
+	case OperatorTypeGreaterEqual:
+		return actual >= expected, nil
+
+	case OperatorTypeLess:
+		return actual < expected, nil
+
+	case OperatorTypeLessEqual:
+		return actual <= expected, nil
+
+	default:
+		return false, newQueryError(
+			queryString,
+			expr.Operator.Position,
+			fmt.Sprintf(
+				"operator %q is not supported for field %q; allowed operators are '=', '!=', '>', '>=', '<', '<='",
+				expr.Operator.Name,
+				expr.Field.Name,
+			),
+		)
+	}
+}

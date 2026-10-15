@@ -110,6 +110,10 @@ request() {
     sleep "$request_delay_seconds"
 }
 
+section() {
+    printf "\n== %s ==\n" "$1"
+}
+
 wait_for_proxy() {
     echo "Waiting for ModSecurity proxy at $target_url ..."
 
@@ -145,12 +149,21 @@ cleanup() {
 }
 
 normal_traffic() {
+    section "normal browsing and API traffic"
+
     request normal GET "/"
     request normal GET "/#/search"
+    request normal GET "/assets/public/images/JuiceShop_Logo.png"
+    request normal GET "/rest/admin/application-configuration"
     request normal GET "/rest/products/search?q=apple"
     request normal GET "/rest/products/search?q=juice"
+    request normal GET "/rest/products/search?q=banana"
+    request normal GET "/rest/products/1/reviews"
     request normal GET "/api/Challenges/"
+    request normal GET "/api/Quantitys/"
+    request normal GET "/api/Cards/"
     request normal GET "/api/BasketItems/"
+    request normal OPTIONS "/rest/products/search?q=apple"
     request normal POST "/api/Feedbacks/" \
         -H "Content-Type: application/json" \
         --data '{"UserId":1,"captchaId":0,"captcha":"0","comment":"Great shop experience","rating":4}'
@@ -159,26 +172,227 @@ normal_traffic() {
         --data '{"email":"guest@example.com","password":"not-a-real-password"}'
 }
 
-attack_traffic() {
-    request attack GET "/rest/products/search?q=%27%20OR%201%3D1--"
-    request attack GET "/rest/products/search?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
-    request attack GET "/ftp/..%2F..%2F..%2F..%2Fetc%2Fpasswd"
-    request attack GET "/?file=../../../../etc/passwd"
-    request attack GET "/?cmd=cat%20/etc/passwd%3B%20id"
-    request attack GET "/rest/products/search?q=%24%7Bjndi%3Aldap%3A%2F%2F127.0.0.1%2Fa%7D"
-    request attack POST "/rest/user/login" \
+error_traffic() {
+    section "ordinary error traffic"
+
+    request error GET "/does-not-exist"
+    request error HEAD "/does-not-exist"
+    request error GET "/api/Products/999999"
+    request error GET "/rest/products/search?q="
+    request error POST "/rest/user/login" \
+        -H "Content-Type: application/json" \
+        --data '{"email":"","password":""}'
+    request error POST "/rest/user/login" \
+        -H "Content-Type: text/plain" \
+        --data "not json"
+    request error PUT "/api/BasketItems/999999" \
+        -H "Content-Type: application/json" \
+        --data '{"ProductId":1,"BasketId":1,"quantity":2}'
+    request error DELETE "/api/BasketItems/999999"
+}
+
+sqli_traffic() {
+    section "sqli probes"
+
+    request sqli GET "/rest/products/search?q=%27%20OR%201%3D1--"
+    request sqli GET "/rest/products/search?q=%27%20UNION%20SELECT%20NULL%2CNULL%2CNULL--"
+    request sqli GET "/rest/products/search?q=%27%29%20OR%20%28%271%27%3D%271"
+    request sqli GET "/rest/products/search?q=1%3BSELECT%20pg_sleep%285%29--"
+    request sqli GET "/rest/products/search?q=1%27%20AND%20SLEEP%285%29--"
+    request sqli POST "/rest/user/login" \
         -H "Content-Type: application/json" \
         --data '{"email":"admin@juice-sh.op'\'' OR 1=1--","password":"anything"}'
-    request attack POST "/api/Feedbacks/" \
+    request sqli POST "/api/Feedbacks/" \
+        -H "Content-Type: application/json" \
+        --data '{"UserId":"1 OR 1=1","captchaId":0,"captcha":"0","comment":"normal text","rating":5}'
+    request sqli PUT "/api/Products/1" \
+        -H "Content-Type: application/json" \
+        --data '{"name":"Juice'\'' OR 1=1--","description":"sql test","price":1.99}'
+    request sqli PATCH "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"email":"updated@example.com'\'' UNION SELECT password FROM Users--"}'
+    request sqli DELETE "/api/BasketItems/1?id=1%20OR%201%3D1"
+    request sqli GET "/" \
+        -H "X-Forwarded-For: 127.0.0.1'\'' OR '\''1'\''='\''1"
+}
+
+xss_traffic() {
+    section "xss and html injection probes"
+
+    request xss GET "/rest/products/search?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+    request xss GET "/rest/products/search?q=%3Csvg%2Fonload%3Dalert(1)%3E"
+    request xss GET "/rest/products/search?q=%22%3E%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E"
+    request xss GET "/?next=javascript%3Aalert%281%29"
+    request xss POST "/api/Feedbacks/" \
         -H "Content-Type: application/json" \
         --data '{"UserId":1,"captchaId":0,"captcha":"0","comment":"<img src=x onerror=alert(1)>","rating":1}'
-    request attack GET "/" \
+    request xss POST "/api/Feedbacks/" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        --data 'comment=%3Cscript%3Ealert(document.domain)%3C%2Fscript%3E&rating=1'
+    request xss PUT "/api/Products/1" \
+        -H "Content-Type: application/json" \
+        --data '{"name":"<svg/onload=alert(1)>","description":"updated by test","price":2.49}'
+    request xss PATCH "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"username":"\"><img src=x onerror=alert(1)>"}'
+}
+
+lfi_rfi_traffic() {
+    section "file inclusion and traversal probes"
+
+    request lfi GET "/ftp/..%2F..%2F..%2F..%2Fetc%2Fpasswd"
+    request lfi GET "/?file=../../../../etc/passwd"
+    request lfi GET "/?file=..%5C..%5C..%5Cwindows%5Cwin.ini"
+    request lfi GET "/?template=php://filter/convert.base64-encode/resource=index.php"
+    request lfi GET "/?page=http://127.0.0.1:3000/admin"
+    request lfi GET "/?download=/proc/self/environ"
+    request lfi POST "/api/Feedbacks/" \
+        -H "Content-Type: application/json" \
+        --data '{"comment":"../../../../etc/passwd","rating":1}'
+    request lfi PUT "/api/Products/1" \
+        -H "Content-Type: application/json" \
+        --data '{"image":"../../../../etc/passwd","description":"path traversal in body"}'
+    request lfi PATCH "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"profileImage":"..\\..\\..\\windows\\win.ini"}'
+}
+
+rce_traffic() {
+    section "rce and command injection probes"
+
+    request rce GET "/?cmd=cat%20/etc/passwd%3B%20id"
+    request rce GET "/?cmd=whoami%26%26uname%20-a"
+    request rce GET "/?host=127.0.0.1%7Ccat%20/etc/passwd"
+    request rce GET "/rest/products/search?q=%24%28id%29"
+    request rce POST "/api/Feedbacks/" \
+        -H "Content-Type: application/json" \
+        --data '{"comment":"; cat /etc/passwd","rating":1}'
+    request rce PUT "/api/Products/1" \
+        -H "Content-Type: application/json" \
+        --data '{"name":"test","description":"$(id) && cat /etc/passwd","price":1.99}'
+    request rce PATCH "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"bio":"`whoami`; uname -a"}'
+    request rce DELETE "/api/BasketItems/1?confirm=%60id%60"
+}
+
+scanner_and_protocol_traffic() {
+    section "scanner, protocol, and header probes"
+
+    request scanner GET "/" \
         -H "User-Agent: sqlmap/1.7 test traffic" \
         -H "X-Forwarded-For: 127.0.0.1'\'' OR '\''1'\''='\''1"
+    request scanner GET "/.env" \
+        -H "User-Agent: Nikto test traffic"
+    request scanner GET "/wp-admin/"
+    request scanner GET "/phpmyadmin/"
+    request scanner GET "/server-status"
+    request scanner TRACE "/"
+    request scanner GET "/" \
+        -H "X-Original-URL: /admin" \
+        -H "X-Rewrite-URL: /admin"
+    request scanner POST "/rest/user/login" \
+        -H "User-Agent: nmap scripting engine" \
+        -H "Content-Type: application/json" \
+        --data '{"email":"scan@example.com","password":"scan"}'
+    request scanner PUT "/api/Products/1" \
+        -H "User-Agent: masscan test traffic" \
+        -H "Content-Type: application/json" \
+        --data '{"name":"scanner update"}'
+    request scanner GET "/" \
+        -H "Content-Length: 20" \
+        -H "Transfer-Encoding: chunked"
+}
+
+deserialization_and_template_traffic() {
+    section "deserialization, template, and log4shell-style probes"
+
+    request payload GET "/rest/products/search?q=%24%7Bjndi%3Aldap%3A%2F%2F127.0.0.1%2Fa%7D"
+    request payload GET "/rest/products/search?q=%7B%7B7*7%7D%7D"
+    request payload GET "/rest/products/search?q=%3C%25%3D%207*7%20%25%3E"
+    request payload POST "/api/Feedbacks/" \
+        -H "Content-Type: application/json" \
+        --data '{"comment":"${jndi:ldap://127.0.0.1/a}","rating":1}'
+    request payload POST "/api/Feedbacks/" \
+        -H "Content-Type: application/json" \
+        --data '{"comment":"O:8:\"stdClass\":0:{}","rating":1}'
+    request payload PUT "/api/Products/1" \
+        -H "Content-Type: application/json" \
+        --data '{"description":"{{constructor.constructor('\''alert(1)'\'')()}}"}'
+    request payload PATCH "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"profile":"${jndi:ldap://127.0.0.1/profile}"}'
+}
+
+multi_endpoint_method_traffic() {
+    section "multi-method endpoint attack coverage"
+
+    request method POST "/api/Users/" \
+        -H "Content-Type: application/json" \
+        --data '{"email":"attacker+signup@example.com","password":"Password123!","passwordRepeat":"Password123!","securityQuestion":{"id":1,"question":"x","answer":"<script>alert(1)</script>"}}'
+    request method POST "/api/Addresss/" \
+        -H "Content-Type: application/json" \
+        --data '{"UserId":1,"fullName":"../../etc/passwd","mobileNum":"5555555555","zipCode":"12345","streetAddress":"'\'' OR 1=1--","city":"Test","state":"TS","country":"US"}'
+    request method POST "/api/Cards/" \
+        -H "Content-Type: application/json" \
+        --data '{"UserId":1,"fullName":"<img src=x onerror=alert(1)>","cardNum":"4111111111111111","expMonth":12,"expYear":2099}'
+    request method POST "/api/BasketItems/" \
+        -H "Content-Type: application/json" \
+        --data '{"ProductId":"1 OR 1=1","BasketId":1,"quantity":"1; cat /etc/passwd"}'
+    request method POST "/api/Quantitys/" \
+        -H "Content-Type: application/json" \
+        --data '{"ProductId":1,"quantity":"../../../../etc/passwd"}'
+    request method POST "/rest/products/reviews" \
+        -H "Content-Type: application/json" \
+        --data '{"message":"<svg/onload=alert(1)>","author":"reviewer@example.com"}'
+
+    request method PUT "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"email":"put@example.com'\'' OR '\''1'\''='\''1","role":"admin"}'
+    request method PUT "/api/Addresss/1" \
+        -H "Content-Type: application/json" \
+        --data '{"streetAddress":"$(cat /etc/passwd)","city":"Updated","country":"US"}'
+    request method PUT "/api/Cards/1" \
+        -H "Content-Type: application/json" \
+        --data '{"fullName":"\"><script>alert(1)</script>","cardNum":"4111111111111111"}'
+    request method PUT "/api/BasketItems/1" \
+        -H "Content-Type: application/json" \
+        --data '{"quantity":"1 UNION SELECT password FROM Users"}'
+
+    request method PATCH "/api/Users/1" \
+        -H "Content-Type: application/json" \
+        --data '{"password":"${jndi:ldap://127.0.0.1/password}"}'
+    request method PATCH "/api/Products/1" \
+        -H "Content-Type: application/json" \
+        --data '{"description":"php://filter/convert.base64-encode/resource=index.php"}'
+    request method PATCH "/api/BasketItems/1" \
+        -H "Content-Type: application/json" \
+        --data '{"quantity":"`id`"}'
+
+    request method DELETE "/api/Users/1?force=true%20OR%201%3D1"
+    request method DELETE "/api/Products/1?returnTo=javascript%3Aalert(1)"
+    request method DELETE "/api/Addresss/1?file=../../../../etc/passwd"
+    request method DELETE "/api/Cards/1?cmd=cat%20/etc/passwd"
+
+    request method OPTIONS "/api/Users/" \
+        -H "Access-Control-Request-Method: DELETE" \
+        -H "Access-Control-Request-Headers: authorization,x-admin"
+    request method HEAD "/api/Challenges/"
+}
+
+attack_traffic() {
+    sqli_traffic
+    xss_traffic
+    lfi_rfi_traffic
+    rce_traffic
+    scanner_and_protocol_traffic
+    deserialization_and_template_traffic
+    multi_endpoint_method_traffic
 }
 
 run_pass() {
     normal_traffic
+    error_traffic
     attack_traffic
 }
 

@@ -5,14 +5,10 @@ package cmd
 
 import (
 	"api-collector/internal/identity"
-	"api-collector/internal/indexer"
 	"api-collector/internal/ingest"
-	"api-collector/internal/query"
 	"api-collector/internal/watcher"
-	queryv1 "api-collector/proto/query/v1"
-	"errors"
 	"fmt"
-	"net"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -22,13 +18,12 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 )
 
 // startCmd represents the start command
 var background bool
 var file string
+var apiObserverAddr string
 
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -67,7 +62,6 @@ var startCmd = &cobra.Command{
 		}
 
 		// Everything below here runs in the actual server process.
-
 		pidPath, err := getPIDPath()
 		if err != nil {
 			return err
@@ -95,8 +89,20 @@ var startCmd = &cobra.Command{
 		)
 		defer stop()
 
-		ingestClient :=
-			ingest.NewClient()
+		ingestClient := ingest.NewClient()
+
+		if err := ingestClient.Connect(
+			ctx,
+			apiObserverAddr,
+		); err != nil {
+			log.Printf("failed to connect to API Observer: %v\n", err)
+
+			if err := ingestClient.ReconnectWithBackoff(ctx); err != nil {
+				return fmt.Errorf("failed to connect to API Observer: %w", err)
+			}
+
+			log.Println("ingest connection restored!")
+		}
 
 		defer func() {
 			if err := ingestClient.Close(); err != nil {
@@ -107,74 +113,9 @@ var startCmd = &cobra.Command{
 			}
 		}()
 
-		indexBlocks, err := indexer.ReadIndexFile(file)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				err := indexer.IndexFile(file, blockSize)
-				if err != nil {
-					return err
-				}
-
-				indexBlocks, err = indexer.ReadIndexFile(file)
-				if err != nil {
-					return err
-				}
-			} else {
-				return err
-			}
-		}
-
-		tree := indexer.NewBPlusTree[int64, indexer.IndexBlock](128)
-
-		for _, block := range indexBlocks {
-			tree.Insert(block.TimestampStart, block)
-		}
-
-		_, lastBlock, ok := tree.Last()
-		if !ok {
-			lastBlock = indexer.IndexBlock{
-				EndOffset: 0,
-				BlockSize: 100,
-			}
-		}
-
-		grpcListener, err := net.Listen(
-			"tcp",
-			":24900",
-		)
-		if err != nil {
-			return fmt.Errorf("failed to create gRPC listener: %w", err)
-		}
-		defer grpcListener.Close()
-
-		grpcServer := grpc.NewServer()
-
-		queryServer := query.NewServer(
-			ctx,
-			file,
-			tree,
-			collectorID,
-			ingestClient,
-		)
-
-		queryv1.RegisterLogServiceServer(
-			grpcServer,
-			queryServer,
-		)
-
-		reflection.Register(grpcServer)
-
-		go func() {
-			if err := grpcServer.Serve(grpcListener); err != nil {
-				fmt.Printf("gRPC server error: %v\n", err)
-			}
-		}()
-
 		return watcher.Watch(
 			ctx,
 			file,
-			lastBlock,
-			tree,
 			ingestClient,
 			collectorID,
 		)
@@ -198,6 +139,14 @@ func init() {
 		"f",
 		"",
 		"The file API Collector will be watching",
+	)
+
+	startCmd.Flags().StringVarP(
+		&apiObserverAddr,
+		"observer-ingest-addr",
+		"o",
+		"localhost:24899",
+		"API Observer ingest gRPC address",
 	)
 
 	// Here you will define your flags and configuration settings.

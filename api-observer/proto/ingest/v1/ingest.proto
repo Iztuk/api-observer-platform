@@ -14,7 +14,13 @@ message Record {
   oneof event {
     Request request = 1;
     Response response = 2;
+    Heartbeat heartbeat = 3;
   }
+}
+
+message Heartbeat {
+  string collector_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
 }
 
 message Metadata {
@@ -56,3 +62,4 @@ message IngestAck {
   string message = 3;
   bool retryable = 4;
 }
+
