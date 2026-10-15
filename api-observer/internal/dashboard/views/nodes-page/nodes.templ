@@ -10,10 +10,9 @@ templ NodesPage(title string, nodes []*nodes.Node) {
 	@views.Layout(title) {
 		<link rel="stylesheet" href="/static/css/nodes.css"/>
 		@NodesPageContent(nodes)
-		@AddNodeModal()
-		@DeleteNodeModal()
+		@RenameNodeModal()
 		@FormValidationScript()
-		@DeleteNodeModalScript()
+		@RenameNodeModalScript()
 	}
 }
 
@@ -22,26 +21,9 @@ templ NodesPageContent(nodes []*nodes.Node) {
 		<header class="nodes-page-header">
 			<h2>Nodes</h2>
 			<p>
-				Review the nodes registered to API Observer
+				Review collectors connected to API Observer
 			</p>
 		</header>
-		<section class="nodes-section nodes-actions">
-			<button
-				type="button"
-				onclick="document.getElementById('addNodeModal').showModal()"
-			>
-				Add Node
-			</button>
-			<button
-				type="button"
-				onclick="
-					populateDeleteNodeDropdown();
-					document.getElementById('deleteNodeModal').showModal();
-				"
-			>
-				Delete Node
-			</button>
-		</section>
 		<section
 			id="nodes-section"
 			class="nodes-section"
@@ -54,7 +36,7 @@ templ NodesPageContent(nodes []*nodes.Node) {
 templ NodesList(nodes []*nodes.Node) {
 	<div class="nodes-list-header">
 		<h3>Registered Nodes</h3>
-		<span class="rules-count">
+		<span class="nodes-count">
 			{ fmt.Sprintf("%d nodes", len(nodes)) }
 		</span>
 	</div>
@@ -69,7 +51,7 @@ templ NodesList(nodes []*nodes.Node) {
 			if len(nodes) == 0 {
 				<div class="nodes-empty">
 					<p>
-						No nodes currently registered.
+						No nodes currently connected.
 					</p>
 				</div>
 			} else {
@@ -79,15 +61,42 @@ templ NodesList(nodes []*nodes.Node) {
 						data-node-id={ node.ID }
 						data-node-name={ node.Name }
 					>
-						<p class="node-name">
-							{ node.Name }
-						</p>
-						<p class="node-id">
-							{ node.ID }
-						</p>
-						<p class="node-addr">
-							{ node.Addr }
-						</p>
+						<div class="node-details">
+							<div class="node-primary">
+								<div
+									class={
+										"node-status",
+										templ.KV(
+											"node-status-connected",
+											node.Connected(),
+										),
+										templ.KV(
+											"node-status-disconnected",
+											!node.Connected(),
+										),
+									}
+								></div>
+								<p class="node-name">
+									{ node.Name }
+								</p>
+							</div>
+							<p class="node-id">
+								{ node.ID }
+							</p>
+							<p class="node-addr">
+								{ node.Addr }
+							</p>
+						</div>
+						<div class="node-actions">
+							<button
+								type="button"
+								data-node-id={ node.ID }
+								data-node-name={ node.Name }
+								onclick="openRenameNodeModal(this)"
+							>
+								Rename
+							</button>
+						</div>
 					</div>
 				}
 			}
@@ -95,112 +104,51 @@ templ NodesList(nodes []*nodes.Node) {
 	</div>
 }
 
-templ AddNodeModal() {
+templ RenameNodeModal() {
 	<dialog
-		id="addNodeModal"
+		id="renameNodeModal"
 		class="modal"
 	>
 		<form
-			id="add-node-form"
+			id="rename-node-form"
 			class="modal-form"
 			data-validate-form
-			hx-post="/nodes"
+			hx-post="/nodes/name"
 			hx-target="#nodes-section"
 			hx-swap="innerHTML"
-			hx-on::after:request="
-				document.getElementById('addNodeModal').close();
-			"
 		>
 			<header>
-				<h2>Add Node</h2>
+				<h2>Rename Node</h2>
 			</header>
+			<input
+				type="hidden"
+				name="node-id"
+				id="rename-node-id"
+			/>
 			<div class="modal-form-field">
-				<label for="add-node-name">
+				<label for="rename-node-name">
 					Name
 				</label>
 				<input
 					type="text"
 					name="name"
-					id="add-node-name"
+					id="rename-node-name"
 					required
 				/>
 			</div>
-			<div class="modal-form-field">
-				<label for="add-node-addr">
-					Address
-				</label>
-				<input
-					type="text"
-					name="addr"
-					id="add-node-addr"
-					required
-				/>
-			</div>
-			<div>
-				<button
-					type="submit"
-					data-submit-button
-					disabled
-				>
-					Add
-				</button>
+			<div class="modal-actions">
 				<button
 					type="button"
-					onclick="document.getElementById('addNodeModal').close()"
+					onclick="document.getElementById('renameNodeModal').close()"
 				>
 					Cancel
 				</button>
-			</div>
-		</form>
-	</dialog>
-}
-
-templ DeleteNodeModal() {
-	<dialog
-		id="deleteNodeModal"
-		class="modal"
-	>
-		<form
-			id="delete-node-form"
-			class="modal-form"
-			data-validate-form
-			hx-delete="/nodes"
-			hx-target="#nodes-section"
-			hx-swap="innerHTML"
-			hx-on::after:request="
-				document.getElementById('deleteNodeModal').close();
-			"
-		>
-			<header>
-				<h2>Delete Node</h2>
-			</header>
-			<div class="modal-form-field">
-				<label for="delete-node-dropdown">
-					Node
-				</label>
-				<select
-					name="delete-node-id"
-					id="delete-node-dropdown"
-					required
-				>
-					<option value="">
-						Select Node
-					</option>
-				</select>
-			</div>
-			<div>
 				<button
 					type="submit"
 					data-submit-button
-					disabled
+					onclick="document.getElementById('renameNodeModal').close()"
 				>
-					Delete
-				</button>
-				<button
-					type="button"
-					onclick="document.getElementById('deleteNodeModal').close()"
-				>
-					Cancel
+					Save
 				</button>
 			</div>
 		</form>
@@ -237,71 +185,45 @@ templ FormValidationScript() {
 	</script>
 }
 
-templ DeleteNodeModalScript() {
+templ RenameNodeModalScript() {
 	<script>
-		function populateDeleteNodeDropdown() {
-			const nodesList = document.getElementById("nodes-list");
+		function openRenameNodeModal(button) {
+			const modal = document.getElementById("renameNodeModal");
 
-			const dropdown = document.getElementById("delete-node-dropdown");
+			const idInput = document.getElementById("rename-node-id");
 
-			if (!nodesList || !dropdown) {
+			const nameInput = document.getElementById("rename-node-name");
+
+			const form = document.getElementById("rename-node-form");
+
+			if (!button || !modal || !idInput || !nameInput || !form) {
 				return;
 			}
 
-			/*
-				Clear any nodes that were previously added to
-				the dropdown.
+			const nodeID = button.dataset.nodeId;
 
-				This prevents duplicates every time the modal
-				is opened.
-			*/
-			dropdown.innerHTML = "";
+			const nodeName = button.dataset.nodeName;
 
-			const placeholder = document.createElement("option");
+			if (!nodeID) {
+				return;
+			}
 
-			placeholder.value = "";
-			placeholder.textContent = "Select Node";
+			idInput.value = nodeID;
 
-			dropdown.append(placeholder);
+			nameInput.value = nodeName || "";
 
-			/*
-				Read the current node list.
-
-				This is important because #nodes-list may have
-				been replaced by HTMX since the last time the
-				dialog was opened.
-			*/
-			const nodes = nodesList.querySelectorAll(
-				"[data-node-id]",
-				"[data-node-name]",
-			);
-
-			nodes.forEach((node) => {
-				const id = node.dataset.nodeId;
-				const name = node.dataset.nodeName;
-
-				if (!name) {
-					return;
-				}
-
-				const option = document.createElement("option");
-
-				option.value = id;
-				option.textContent = name;
-
-				dropdown.append(option);
-			});
-
-			/*
-				The dropdown may have changed from a valid
-				value back to the empty placeholder, so fire
-				a change event to update form validation.
-			*/
-			dropdown.dispatchEvent(
-				new Event("change", {
+			nameInput.dispatchEvent(
+				new Event("input", {
 					bubbles: true,
 				}),
 			);
+
+			modal.showModal();
+
+			requestAnimationFrame(() => {
+				nameInput.focus();
+				nameInput.select();
+			});
 		}
 	</script>
 }

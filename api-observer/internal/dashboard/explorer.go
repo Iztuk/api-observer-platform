@@ -1,26 +1,21 @@
 package dashboard
 
 import (
-	"api-observer/internal/audit"
-	"api-observer/internal/dashboard/views/explorer"
-	"api-observer/internal/query"
-	queryv1 "api-observer/proto/query/v1"
-
-	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"api-observer/internal/audit"
+	"api-observer/internal/dashboard/views/explorer"
+	"api-observer/internal/query"
+	queryv1 "api-observer/proto/query/v1"
 )
 
 const (
 	explorerDateTimeLayout = "2006-01-02T15:04"
 	defaultExplorerLimit   = 100
-	explorerBatchSize      = 256
 )
 
 type explorerParams struct {
@@ -55,17 +50,18 @@ func (h *Handler) ExplorerPage(
 
 	nodeList := h.Nodes.List()
 
-	var (
-		logs       query.LogItems
-		nextCursor int64
-		hasMore    bool
+	logs := make(
+		query.LogItems,
+		0,
 	)
 
+	var nextCursor int64
+	var hasMore bool
+
 	if params.NodeID != "" {
-		node, ok := h.Nodes.Get(
+		if _, ok := h.Nodes.Get(
 			params.NodeID,
-		)
-		if !ok {
+		); !ok {
 			http.Error(
 				w,
 				fmt.Sprintf(
@@ -73,29 +69,6 @@ func (h *Handler) ExplorerPage(
 					params.NodeID,
 				),
 				http.StatusNotFound,
-			)
-
-			return
-		}
-
-		logs, nextCursor, hasMore, err = h.streamLogs(
-			r.Context(),
-			node.Client,
-			params.NodeID,
-			params.Query,
-			params.Start,
-			params.End,
-			params.Cursor,
-			params.Limit,
-		)
-		if err != nil {
-			http.Error(
-				w,
-				fmt.Sprintf(
-					"failed to retrieve logs: %v",
-					err,
-				),
-				http.StatusInternalServerError,
 			)
 
 			return
@@ -152,10 +125,9 @@ func (h *Handler) ExplorerLogs(
 		return
 	}
 
-	node, ok := h.Nodes.Get(
+	if _, ok := h.Nodes.Get(
 		params.NodeID,
-	)
-	if !ok {
+	); !ok {
 		http.Error(
 			w,
 			fmt.Sprintf(
@@ -168,28 +140,13 @@ func (h *Handler) ExplorerLogs(
 		return
 	}
 
-	logs, nextCursor, hasMore, err := h.streamLogs(
-		r.Context(),
-		node.Client,
-		params.NodeID,
-		params.Query,
-		params.Start,
-		params.End,
-		params.Cursor,
-		params.Limit,
+	logs := make(
+		query.LogItems,
+		0,
 	)
-	if err != nil {
-		http.Error(
-			w,
-			fmt.Sprintf(
-				"failed to retrieve logs: %v",
-				err,
-			),
-			http.StatusInternalServerError,
-		)
 
-		return
-	}
+	var nextCursor int64
+	var hasMore bool
 
 	if err := explorer.ExplorerLogRows(
 		logs,
@@ -225,7 +182,9 @@ func parseExplorerParams(
 		Limit: defaultExplorerLimit,
 	}
 
-	cursorString := queries.Get("cursor")
+	cursorString := queries.Get(
+		"cursor",
+	)
 
 	if cursorString != "" {
 		cursor, err := strconv.ParseInt(
@@ -307,7 +266,9 @@ func parseExplorerParams(
 		params.Start = start
 	}
 
-	if params.End.Before(params.Start) {
+	if params.End.Before(
+		params.Start,
+	) {
 		return explorerParams{},
 			fmt.Errorf(
 				"end time must be after start time",
@@ -315,200 +276,6 @@ func parseExplorerParams(
 	}
 
 	return params, nil
-}
-
-func (h *Handler) streamLogs(
-	ctx context.Context,
-	client queryv1.LogServiceClient,
-	nodeID string,
-	queryString string,
-	start time.Time,
-	end time.Time,
-	startCursor int64,
-	limit int,
-) (
-	query.LogItems,
-	int64,
-	bool,
-	error,
-) {
-	expr, err := query.ParseQuery(
-		queryString,
-	)
-	if err != nil {
-		return nil,
-			startCursor,
-			false,
-			err
-	}
-
-	queryCtx, cancel := context.WithCancel(
-		ctx,
-	)
-	defer cancel()
-
-	stream, err := client.Query(
-		queryCtx,
-		&queryv1.LogParams{
-			StartDate: timestamppb.New(start),
-			EndDate:   timestamppb.New(end),
-			Cursor:    startCursor,
-		},
-	)
-	if err != nil {
-		return nil,
-			startCursor,
-			false,
-			fmt.Errorf(
-				"failed to query node: %w",
-				err,
-			)
-	}
-
-	logs := make(
-		query.LogItems,
-		0,
-		limit,
-	)
-
-	batch := make(
-		query.LogItems,
-		0,
-		explorerBatchSize,
-	)
-
-	nextCursor := startCursor
-	probing := false
-
-	processBatch := func() (
-		bool,
-		error,
-	) {
-		if len(batch) == 0 {
-			return false, nil
-		}
-
-		if err := batch.GetFindings(
-			ctx,
-			h.DB,
-			h.Config.FindingsLog,
-			nodeID,
-			start.UnixNano(),
-			end.UnixNano(),
-		); err != nil {
-			return false,
-				fmt.Errorf(
-					"failed to retrieve log findings: %w",
-					err,
-				)
-		}
-
-		for _, item := range batch {
-			matches, err := query.EvaluateExpression(
-				queryString,
-				expr,
-				item,
-			)
-			if err != nil {
-				return false,
-					fmt.Errorf(
-						"failed to evaluate log query: %w",
-						err,
-					)
-			}
-
-			if probing && matches {
-				return true, nil
-			}
-
-			if !probing && matches {
-				logs = append(
-					logs,
-					item,
-				)
-			}
-
-			switch item.Log.Event.(type) {
-			case *queryv1.Log_Response:
-				nextCursor = item.Log.Cursor
-
-				if !probing &&
-					limit > 0 &&
-					len(logs) >= limit {
-
-					probing = true
-				}
-			}
-		}
-
-		batch = batch[:0]
-
-		return false, nil
-	}
-
-	for {
-		logRecord, err := stream.Recv()
-
-		if err == io.EOF {
-			hasMore, processErr := processBatch()
-			if processErr != nil {
-				return logs,
-					nextCursor,
-					false,
-					processErr
-			}
-
-			return logs,
-				nextCursor,
-				hasMore,
-				nil
-		}
-
-		if err != nil {
-			return logs,
-				nextCursor,
-				false,
-				fmt.Errorf(
-					"failed to receive log: %w",
-					err,
-				)
-		}
-
-		batch = append(
-			batch,
-			query.LogItem{
-				Log: logRecord,
-			},
-		)
-
-		_, isResponse :=
-			logRecord.Event.(*queryv1.Log_Response)
-
-		if !isResponse {
-			continue
-		}
-
-		if len(batch) < explorerBatchSize {
-			continue
-		}
-
-		hasMore, err := processBatch()
-		if err != nil {
-			return logs,
-				nextCursor,
-				false,
-				err
-		}
-
-		if hasMore {
-			cancel()
-
-			return logs,
-				nextCursor,
-				true,
-				nil
-		}
-	}
 }
 
 func parseExplorerTime(
@@ -657,9 +424,14 @@ func toHTTPHeader(
 	result := http.Header{}
 
 	for key, value := range headers {
-		if value != nil {
-			result[key] = value.Values
+		if value == nil {
+			continue
 		}
+
+		result[key] = append(
+			[]string(nil),
+			value.Values...,
+		)
 	}
 
 	return result

@@ -41,58 +41,10 @@
   flex-direction: column;
   gap: 1rem;
 
-  min-width: 0;
-  flex-shrink: 0;
-}
-
-/* The last section fills remaining space. */
-
-.nodes-page > .nodes-section:last-of-type {
   flex: 1 1 0;
 
   min-height: 0;
   min-width: 0;
-}
-
-/* =========================================
-   Actions
-========================================= */
-
-.nodes-actions {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-
-.nodes-actions > button {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-
-  padding: 0.7rem 1rem;
-
-  color: var(--text-color);
-  background: var(--sidebar-background);
-
-  border: 1px solid var(--border-color);
-  border-radius: 0.375rem;
-
-  font: inherit;
-  font-size: 0.875rem;
-
-  cursor: pointer;
-}
-
-.nodes-actions > button:hover {
-  background: var(--hover-background);
-}
-
-.nodes-actions > button:focus-visible {
-  outline: 2px solid var(--text-color);
-  outline-offset: 2px;
-}
-
-button:disabled {
-  visibility: hidden;
 }
 
 /* =========================================
@@ -107,7 +59,7 @@ button:disabled {
   gap: 1rem;
 }
 
-.nodes-list-header span {
+.nodes-count {
   color: var(--muted-text-color);
 
   font-size: 0.875rem;
@@ -121,7 +73,6 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
-  gap: 1rem;
 
   flex: 1 1 0;
 
@@ -152,14 +103,14 @@ button:disabled {
 }
 
 /* =========================================
-   Node List Items
+   Node Item
 ========================================= */
 
-.nodes-list > div:not(.nodes-empty) {
+.node-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 1.5rem;
 
   width: 100%;
   box-sizing: border-box;
@@ -169,27 +120,131 @@ button:disabled {
   color: var(--text-color);
   background: var(--background);
 
-  border: 1px solid var(--border-color);
-
-  font: inherit;
-  text-align: left;
+  border: 1px solid var(--border-color) !important;
 }
 
-.nodes-list > div:not(.nodes-empty) p {
+.node-item:last-child {
+  border-bottom: 0;
+}
+
+.node-item:hover {
+  background: var(--hover-background);
+}
+
+/* =========================================
+   Node Details
+========================================= */
+
+.node-details {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+
+  min-width: 0;
+
+  flex: 1;
+}
+
+.node-primary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+
+  min-width: 0;
+
+  flex: 1;
+}
+
+.node-name,
+.node-id,
+.node-addr {
   margin: 0;
 
   min-width: 0;
 
-  font-size: 0.9rem;
-  font-weight: 600;
-
   overflow-wrap: anywhere;
 }
 
-.node-addr,
-.node-id {
-  font-weight: normal !important;
+.node-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.node-id,
+.node-addr {
   color: var(--muted-text-color);
+
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.node-id {
+  flex: 1.25;
+}
+
+.node-addr {
+  flex: 1;
+}
+
+/* =========================================
+   Status
+========================================= */
+
+.node-status {
+  width: 0.55rem;
+  height: 0.55rem;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+}
+
+.node-status-connected {
+  background: #28a745;
+}
+
+.node-status-disconnected {
+  background: #6c757d;
+}
+
+/* =========================================
+   Node Actions
+========================================= */
+
+.node-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  flex-shrink: 0;
+}
+
+.node-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0.55rem 0.85rem;
+
+  color: var(--text-color);
+  background: var(--sidebar-background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+
+  font: inherit;
+  font-size: 0.8rem;
+
+  cursor: pointer;
+}
+
+.node-actions button:hover {
+  background: var(--hover-background);
+}
+
+.node-actions button:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: 2px;
 }
 
 /* =========================================
@@ -208,21 +263,6 @@ button:disabled {
   color: var(--muted-text-color);
 
   font-size: 0.875rem;
-}
-
-/* =========================================
-   Responsive Layout
-========================================= */
-
-@media (max-width: 900px) {
-  .nodes-actions {
-    flex-direction: column;
-  }
-
-  .nodes-actions > button {
-    width: 100%;
-    justify-content: center;
-  }
 }
 
 /* =========================================
@@ -258,8 +298,7 @@ body:has(dialog[open]) {
    Form
 ========================================= */
 
-.modal-form,
-.modal > form {
+.modal-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -269,27 +308,17 @@ body:has(dialog[open]) {
   padding: 1.25rem;
 }
 
-/* =========================================
-   Form Header
-========================================= */
-
-.modal-form header,
-.modal > form > header {
+.modal-form header {
   padding-bottom: 0.75rem;
 
   border-bottom: 1px solid var(--border-color);
 }
 
-.modal-form header h2,
-.modal > form > header h2 {
+.modal-form header h2 {
   margin: 0;
 
   font-size: 1rem;
 }
-
-/* =========================================
-   Form Fields
-========================================= */
 
 .modal-form-field {
   display: flex;
@@ -306,9 +335,7 @@ body:has(dialog[open]) {
   font-weight: 600;
 }
 
-.modal-form-field input,
-.modal-form-field select,
-.modal select {
+.modal-form-field input {
   width: 100%;
 
   box-sizing: border-box;
@@ -325,29 +352,20 @@ body:has(dialog[open]) {
   font-size: 0.875rem;
 }
 
-.modal-form-field input::placeholder {
-  color: var(--muted-text-color);
-}
-
-.modal-form-field input:hover,
-.modal-form-field select:hover,
-.modal select:hover {
+.modal-form-field input:hover {
   border-color: var(--muted-text-color);
 }
 
-.modal-form-field input:focus-visible,
-.modal-form-field select:focus-visible,
-.modal select:focus-visible {
+.modal-form-field input:focus-visible {
   outline: 2px solid var(--text-color);
   outline-offset: 2px;
 }
 
 /* =========================================
-   Form Actions
+   Modal Actions
 ========================================= */
 
-.modal-form > div:last-child,
-.modal > form > div:last-child {
+.modal-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -356,8 +374,7 @@ body:has(dialog[open]) {
   padding-top: 0.5rem;
 }
 
-.modal-form button,
-.modal > form button {
+.modal-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -376,74 +393,67 @@ body:has(dialog[open]) {
   cursor: pointer;
 }
 
-.modal-form button:hover,
-.modal > form button:hover {
+.modal-actions button:hover {
   background: var(--hover-background);
 }
 
-.modal-form button:focus-visible,
-.modal > form button:focus-visible {
+.modal-actions button:focus-visible {
   outline: 2px solid var(--text-color);
   outline-offset: 2px;
 }
 
-/* Primary submit button */
-
-.modal-form button[type="submit"],
-.modal > form button[type="submit"] {
+.modal-actions button[type="submit"] {
   font-weight: 600;
 }
 
-/* Delete modal submit */
-
-#deleteNodeModal button[type="submit"] {
-  color: #fff;
-  background: #dc3545;
-
-  border-color: #dc3545;
-}
-
-#deleteNodeModal button[type="submit"]:hover {
-  background: #bb2d3b;
-}
-
-/* =========================================
-   Delete Dropdown
-========================================= */
-
-#delete-node-dropdown {
-  width: 100%;
-
-  box-sizing: border-box;
-
-  padding: 0.7rem 0.75rem;
-
-  color: var(--text-color);
-  background: var(--background);
-
-  border: 1px solid var(--border-color);
-  border-radius: 0.375rem;
-
-  font: inherit;
-  font-size: 0.875rem;
+.modal-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* =========================================
    Responsive
 ========================================= */
 
+@media (max-width: 900px) {
+  .node-item {
+    align-items: flex-start;
+  }
+
+  .node-details {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .node-id,
+  .node-addr {
+    width: 100%;
+  }
+}
+
 @media (max-width: 700px) {
+  .node-item {
+    flex-direction: column;
+  }
+
+  .node-actions {
+    width: 100%;
+  }
+
+  .node-actions button {
+    width: 100%;
+  }
+
   .modal {
     width: calc(100vw - 1rem);
   }
 
-  .modal-form > div:last-child,
-  .modal > form > div:last-child {
+  .modal-actions {
     flex-direction: column-reverse;
   }
 
-  .modal-form button,
-  .modal > form button {
+  .modal-actions button {
     width: 100%;
   }
 }

@@ -2,23 +2,35 @@
 package nodes
 
 import (
-	"context"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
-
-	queryv1 "api-observer/proto/query/v1"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"time"
 )
 
+const defaultHeartbeatTimeout = 45 * time.Second
+
 type Node struct {
-	ID     string
-	Name   string
-	Addr   string
-	Conn   *grpc.ClientConn
-	Client queryv1.LogServiceClient
+	ID   string
+	Name string
+	Addr string
+
+	LastSeen time.Time
+}
+
+func (n *Node) Connected() bool {
+	if n == nil {
+		return false
+	}
+
+	if n.LastSeen.IsZero() {
+		return false
+	}
+
+	return time.Since(
+		n.LastSeen,
+	) <= defaultHeartbeatTimeout
 }
 
 type NodeManager struct {
@@ -26,12 +38,10 @@ type NodeManager struct {
 
 	nodes map[string]*Node
 
-	ingestAddress string
-	appLogger     *log.Logger
+	appLogger *log.Logger
 }
 
 func NewNodeManager(
-	ingestAddress string,
 	appLogger *log.Logger,
 ) *NodeManager {
 	return &NodeManager{
@@ -39,86 +49,138 @@ func NewNodeManager(
 			map[string]*Node,
 		),
 
-		ingestAddress: ingestAddress,
-		appLogger:     appLogger,
+		appLogger: appLogger,
 	}
 }
 
-func (m *NodeManager) Add(
-	ctx context.Context,
-	name string,
-	addr string,
-) error {
-	conn, err := grpc.NewClient(
-		addr,
-		grpc.WithTransportCredentials(
-			insecure.NewCredentials(),
-		),
-	)
-	if err != nil {
-		m.appLogger.Printf(
-			"failed to create client for node %q at %q: %v",
-			name,
-			addr,
-			err,
-		)
-
-		return nil
-	}
-
-	client :=
-		queryv1.NewLogServiceClient(
-			conn,
-		)
-
-	info, err := client.Info(
-		ctx,
-		&queryv1.ObserverInfo{
-			IngestAddress: m.ingestAddress,
-		},
-	)
-	if err != nil {
-		_ = conn.Close()
-
-		m.appLogger.Printf(
-			"failed to connect to node %q at %q: %v",
-			name,
-			addr,
-			err,
-		)
-
-		return nil
-	}
-
-	if info.CollectorId == "" {
-		_ = conn.Close()
-
-		return fmt.Errorf(
-			"collector at %q returned an empty collector ID",
-			addr,
-		)
-	}
-
-	node := &Node{
-		ID:     info.CollectorId,
-		Name:   name,
-		Addr:   addr,
-		Conn:   conn,
-		Client: client,
+func (m *NodeManager) Exists(nodeID string) bool {
+	if nodeID == "" {
+		return false
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if existing, ok :=
-		m.nodes[node.ID]; ok {
+	_, ok := m.nodes[nodeID]
 
-		if existing.Conn != nil {
-			_ = existing.Conn.Close()
-		}
+	return ok
+}
+
+func (m *NodeManager) Add(
+	nodeID string,
+	addr string,
+) error {
+	if nodeID == "" {
+		return fmt.Errorf(
+			"node ID is required",
+		)
 	}
 
-	m.nodes[node.ID] = node
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	existing, ok := m.nodes[nodeID]
+	if ok {
+		existing.Addr = addr
+
+		return nil
+	}
+
+	m.nodes[nodeID] = &Node{
+		ID:   nodeID,
+		Name: nodeID,
+		Addr: addr,
+	}
+
+	if m.appLogger != nil {
+		m.appLogger.Printf(
+			"registered collector %q",
+			nodeID,
+		)
+	}
+
+	return nil
+}
+
+func (m *NodeManager) SetName(
+	nodeID string,
+	name string,
+) error {
+	if nodeID == "" {
+		return fmt.Errorf(
+			"node ID is required",
+		)
+	}
+
+	if name == "" {
+		return fmt.Errorf(
+			"node name is required",
+		)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	node, ok := m.nodes[nodeID]
+	if !ok {
+		return fmt.Errorf(
+			"node %q not found",
+			nodeID,
+		)
+	}
+
+	node.Name = name
+
+	if m.appLogger != nil {
+		m.appLogger.Printf(
+			"updated collector %q name to %q",
+			nodeID,
+			name,
+		)
+	}
+
+	return nil
+}
+
+func (m *NodeManager) Heartbeat(
+	nodeID string,
+	receivedAt time.Time,
+) error {
+	if nodeID == "" {
+		return fmt.Errorf(
+			"node ID is required",
+		)
+	}
+
+	if receivedAt.IsZero() {
+		receivedAt = time.Now()
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	node, ok := m.nodes[nodeID]
+	if !ok {
+		node = &Node{
+			ID:   nodeID,
+			Name: nodeID,
+		}
+
+		m.nodes[nodeID] = node
+	}
+
+	wasConnected := node.Connected()
+
+	node.LastSeen = receivedAt
+
+	if !wasConnected &&
+		m.appLogger != nil {
+
+		m.appLogger.Printf(
+			"collector %q connected",
+			nodeID,
+		)
+	}
 
 	return nil
 }
@@ -129,10 +191,12 @@ func (m *NodeManager) Get(
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	node, ok :=
-		m.nodes[nodeID]
+	node, ok := m.nodes[nodeID]
+	if !ok {
+		return nil, false
+	}
 
-	return node, ok
+	return cloneNode(node), true
 }
 
 func (m *NodeManager) List() []*Node {
@@ -148,37 +212,22 @@ func (m *NodeManager) List() []*Node {
 	for _, node := range m.nodes {
 		nodes = append(
 			nodes,
-			node,
+			cloneNode(node),
 		)
 	}
 
+	sort.Slice(
+		nodes,
+		func(
+			i int,
+			j int,
+		) bool {
+			return nodes[i].Name <
+				nodes[j].Name
+		},
+	)
+
 	return nodes
-}
-
-func (m *NodeManager) Close() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	var firstErr error
-
-	for nodeID, node := range m.nodes {
-		if node.Conn == nil {
-			continue
-		}
-
-		if err :=
-			node.Conn.Close(); err != nil &&
-			firstErr == nil {
-
-			firstErr = fmt.Errorf(
-				"failed to close node %q: %w",
-				nodeID,
-				err,
-			)
-		}
-	}
-
-	return firstErr
 }
 
 func (m *NodeManager) Remove(
@@ -187,10 +236,7 @@ func (m *NodeManager) Remove(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	node, ok :=
-		m.nodes[nodeID]
-
-	if !ok {
+	if _, ok := m.nodes[nodeID]; !ok {
 		return fmt.Errorf(
 			"node %q not found",
 			nodeID,
@@ -202,17 +248,38 @@ func (m *NodeManager) Remove(
 		nodeID,
 	)
 
-	if node.Conn != nil {
-		if err :=
-			node.Conn.Close(); err != nil {
-
-			return fmt.Errorf(
-				"failed to close node %q: %w",
-				nodeID,
-				err,
-			)
-		}
+	if m.appLogger != nil {
+		m.appLogger.Printf(
+			"removed collector %q",
+			nodeID,
+		)
 	}
 
 	return nil
+}
+
+func (m *NodeManager) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	clear(
+		m.nodes,
+	)
+
+	return nil
+}
+
+func cloneNode(
+	node *Node,
+) *Node {
+	if node == nil {
+		return nil
+	}
+
+	return &Node{
+		ID:       node.ID,
+		Name:     node.Name,
+		Addr:     node.Addr,
+		LastSeen: node.LastSeen,
+	}
 }

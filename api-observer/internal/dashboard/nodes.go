@@ -1,111 +1,130 @@
 package dashboard
 
 import (
-	"api-observer/internal/config"
-	nodespage "api-observer/internal/dashboard/views/nodes-page"
-	"api-observer/internal/nodes"
 	"fmt"
 	"net/http"
-	"slices"
+	"strings"
+
+	nodespage "api-observer/internal/dashboard/views/nodes-page"
 )
 
-func (h *Handler) NodesPage(w http.ResponseWriter, r *http.Request) {
-	if err := nodespage.NodesPage("Nodes", h.Nodes.List()).Render(r.Context(), w); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+func (h *Handler) NodesPage(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if err := nodespage.NodesPage(
+		"Nodes",
+		h.Nodes.List(),
+	).Render(
+		r.Context(),
+		w,
+	); err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 }
 
-func (h *Handler) NodesList(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) NodesList(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	if err := nodespage.NodesList(
 		h.Nodes.List(),
-	).Render(r.Context(), w); err != nil {
-		http.Error(w, "failed to render node list", http.StatusInternalServerError)
+	).Render(
+		r.Context(),
+		w,
+	); err != nil {
+		http.Error(
+			w,
+			"failed to render node list",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 }
 
-func (h *Handler) AddNode(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	addr := r.FormValue("addr")
-
-	found := slices.ContainsFunc(
-		h.Nodes.List(),
-		func(node *nodes.Node) bool {
-			return node.Name == name
-		},
+func (h *Handler) SetNodeName(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	nodeID := strings.TrimSpace(
+		r.FormValue("node-id"),
 	)
 
-	if found {
-		http.Error(w, fmt.Sprintf("node '%s' already exists", name), http.StatusConflict)
-		return
-	}
-
-	if err := h.Nodes.Add(r.Context(), name, addr); err != nil {
-		http.Error(w, "failed to add node", http.StatusInternalServerError)
-		return
-	}
-
-	h.Config.Nodes = convertNodesToConfigNodes(h.Nodes.List())
-	if err := config.SaveConfigurationFile(h.Config); err != nil {
-		http.Error(w, "failed to save changes", http.StatusInternalServerError)
-		h.Nodes.Remove(name)
-		return
-	}
-
-	if err := nodespage.NodesList(
-		h.Nodes.List(),
-	).Render(r.Context(), w); err != nil {
-		http.Error(w, "failed to render node list", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (h *Handler) DeleteNode(w http.ResponseWriter, r *http.Request) {
-	nodeId := r.FormValue("delete-node-id")
-
-	found := slices.ContainsFunc(
-		h.Nodes.List(),
-		func(node *nodes.Node) bool {
-			return node.ID == nodeId
-		},
+	name := strings.TrimSpace(
+		r.FormValue("name"),
 	)
 
-	if !found {
-		http.Error(w, fmt.Sprintf("node '%s' not found", nodeId), http.StatusNotFound)
+	if nodeID == "" {
+		http.Error(
+			w,
+			"node ID is required",
+			http.StatusBadRequest,
+		)
+
 		return
 	}
 
-	if err := h.Nodes.Remove(nodeId); err != nil {
-		http.Error(w, fmt.Sprintf("failed to remove node '%s'", nodeId), http.StatusInternalServerError)
+	if name == "" {
+		http.Error(
+			w,
+			"node name is required",
+			http.StatusBadRequest,
+		)
+
 		return
 	}
 
-	h.Config.Nodes = convertNodesToConfigNodes(h.Nodes.List())
-	if err := config.SaveConfigurationFile(h.Config); err != nil {
-		http.Error(w, "failed to save changes", http.StatusInternalServerError)
-		h.Nodes.Remove(nodeId)
+	if _, ok := h.Nodes.Get(
+		nodeID,
+	); !ok {
+		http.Error(
+			w,
+			fmt.Sprintf(
+				"node %q not found",
+				nodeID,
+			),
+			http.StatusNotFound,
+		)
+
+		return
+	}
+
+	if err := h.Nodes.SetName(
+		nodeID,
+		name,
+	); err != nil {
+		http.Error(
+			w,
+			fmt.Sprintf(
+				"failed to update node %q: %v",
+				nodeID,
+				err,
+			),
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
 
 	if err := nodespage.NodesList(
 		h.Nodes.List(),
-	).Render(r.Context(), w); err != nil {
-		http.Error(w, "failed to render node list", http.StatusInternalServerError)
+	).Render(
+		r.Context(),
+		w,
+	); err != nil {
+		http.Error(
+			w,
+			"failed to render node list",
+			http.StatusInternalServerError,
+		)
+
 		return
 	}
-}
-
-func convertNodesToConfigNodes(nodes []*nodes.Node) []config.NodeConfig {
-	result := make([]config.NodeConfig, 0)
-
-	for _, node := range nodes {
-		cn := config.NodeConfig{
-			Name: node.Name,
-			Addr: node.Addr,
-		}
-		result = append(result, cn)
-	}
-
-	return result
 }

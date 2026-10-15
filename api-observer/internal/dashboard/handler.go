@@ -82,12 +82,7 @@ func (h *Handler) RegisterRoutes(
 	)
 
 	mux.HandleFunc(
-		"POST /nodes",
-		h.AddNode,
-	)
-
-	mux.HandleFunc(
-		"DELETE /nodes",
-		h.DeleteNode,
+		"POST /nodes/name",
+		h.SetNodeName,
 	)
 }

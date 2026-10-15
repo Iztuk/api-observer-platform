@@ -98,6 +98,12 @@ func RunServer(
 		cfg.QueueSize,
 	)
 
+	nm := nodes.NewNodeManager(
+		appLogger,
+	)
+
+	defer nm.Close()
+
 	grpcListener, err := net.Listen(
 		"tcp",
 		cfg.IngestAddress,
@@ -116,6 +122,7 @@ func RunServer(
 		grpcServer,
 		ingest.NewServer(
 			queue,
+			nm,
 		),
 	)
 
@@ -142,17 +149,6 @@ func RunServer(
 		}
 	}()
 
-	ingestAdvertiseAddress, err :=
-		cfg.IngestAdvertiseAddress()
-	if err != nil {
-		grpcServer.Stop()
-
-		return fmt.Errorf(
-			"failed to resolve ingest advertise address: %w",
-			err,
-		)
-	}
-
 	mux := http.NewServeMux()
 
 	fileServer := http.FileServer(
@@ -168,29 +164,6 @@ func RunServer(
 			fileServer,
 		),
 	)
-
-	nm := nodes.NewNodeManager(
-		ingestAdvertiseAddress,
-		appLogger,
-	)
-
-	defer nm.Close()
-
-	for _, node := range cfg.Nodes {
-		if err := nm.Add(
-			ctx,
-			node.Name,
-			node.Addr,
-		); err != nil {
-			grpcServer.Stop()
-
-			return fmt.Errorf(
-				"failed to add node %q: %w",
-				node.Name,
-				err,
-			)
-		}
-	}
 
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
