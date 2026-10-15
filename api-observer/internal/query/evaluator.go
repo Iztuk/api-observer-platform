@@ -102,8 +102,8 @@ func evaluateComparison(
 			item,
 		)
 
-	case "host":
-		return evaluateHostField(
+	case "node":
+		return evaluateNodeField(
 			queryString,
 			expr,
 			item,
@@ -161,7 +161,9 @@ func evaluateTypeField(
 	expr ComparisonExpression,
 	item LogItem,
 ) (bool, error) {
-	expected, ok := expr.Value.Value.(string)
+	expected, ok :=
+		expr.Value.Value.(string)
+
 	if !ok {
 		return false, newQueryError(
 			queryString,
@@ -173,9 +175,14 @@ func evaluateTypeField(
 		)
 	}
 
-	expected = strings.ToLower(expected)
+	expected =
+		strings.ToLower(
+			expected,
+		)
 
-	if !isValidJobType(expected) {
+	if !isValidJobType(
+		expected,
+	) {
 		return false, newQueryError(
 			queryString,
 			expr.Value.Position,
@@ -222,7 +229,9 @@ func evaluateTypeField(
 func isValidJobType(
 	value string,
 ) bool {
-	switch strings.ToLower(value) {
+	switch strings.ToLower(
+		value,
+	) {
 	case "request", "response":
 		return true
 
@@ -231,12 +240,14 @@ func isValidJobType(
 	}
 }
 
-func evaluateHostField(
+func evaluateNodeField(
 	queryString string,
 	expr ComparisonExpression,
 	item LogItem,
 ) (bool, error) {
-	expected, ok := expr.Value.Value.(string)
+	expected, ok :=
+		expr.Value.Value.(string)
+
 	if !ok {
 		return false, newQueryError(
 			queryString,
@@ -248,41 +259,8 @@ func evaluateHostField(
 		)
 	}
 
-	request := item.Log.GetRequest()
-	if request == nil {
-		return false, nil
-	}
-
-	actual := ""
-
-	for key, values := range request.Headers {
-		if !strings.EqualFold(
-			key,
-			"Host",
-		) {
-			continue
-		}
-
-		if values != nil &&
-			len(values.Values) > 0 {
-			actual = values.Values[0]
-		}
-
-		break
-	}
-
-	/*
-		If Host isn't available as a header, try the URL.
-	*/
-	if actual == "" &&
-		request.Url != "" {
-		u, err := url.Parse(
-			request.Url,
-		)
-		if err == nil {
-			actual = u.Host
-		}
-	}
+	actual :=
+		item.NodeName
 
 	switch expr.Operator.Type {
 	case OperatorTypeEqual:
@@ -315,7 +293,9 @@ func evaluateMethod(
 	expr ComparisonExpression,
 	item LogItem,
 ) (bool, error) {
-	expected, ok := expr.Value.Value.(string)
+	expected, ok :=
+		expr.Value.Value.(string)
+
 	if !ok {
 		return false, newQueryError(
 			queryString,
@@ -327,12 +307,15 @@ func evaluateMethod(
 		)
 	}
 
-	request := item.Log.GetRequest()
+	request :=
+		item.Log.GetRequest()
+
 	if request == nil {
 		return false, nil
 	}
 
-	actual := request.Method
+	actual :=
+		request.Method
 
 	switch expr.Operator.Type {
 	case OperatorTypeEqual:
@@ -365,7 +348,9 @@ func evaluatePath(
 	expr ComparisonExpression,
 	item LogItem,
 ) (bool, error) {
-	expected, ok := expr.Value.Value.(string)
+	expected, ok :=
+		expr.Value.Value.(string)
+
 	if !ok {
 		return false, newQueryError(
 			queryString,
@@ -377,25 +362,32 @@ func evaluatePath(
 		)
 	}
 
-	request := item.Log.GetRequest()
+	request :=
+		item.Log.GetRequest()
+
 	if request == nil {
 		return false, nil
 	}
 
-	actual := request.Url
+	actual :=
+		request.Url
 
-	if parsedURL, err := url.Parse(
-		request.Url,
-	); err == nil {
+	if parsedURL, err :=
+		url.Parse(
+			request.Url,
+		); err == nil {
+
 		if parsedURL.Path != "" {
-			actual = parsedURL.Path
+			actual =
+				parsedURL.Path
 		}
 	}
 
-	matches := pathMatches(
-		expected,
-		actual,
-	)
+	matches :=
+		pathMatches(
+			expected,
+			actual,
+		)
 
 	switch expr.Operator.Type {
 	case OperatorTypeEqual:
@@ -421,16 +413,19 @@ func pathMatches(
 	pattern string,
 	actual string,
 ) bool {
-	patternParts := splitPath(
-		pattern,
-	)
+	patternParts :=
+		splitPath(
+			pattern,
+		)
 
-	actualParts := splitPath(
-		actual,
-	)
+	actualParts :=
+		splitPath(
+			actual,
+		)
 
 	if len(patternParts) !=
 		len(actualParts) {
+
 		return false
 	}
 
@@ -451,7 +446,9 @@ func pathMatches(
 			continue
 		}
 
-		if patternPart != actualPart {
+		if patternPart !=
+			actualPart {
+
 			return false
 		}
 	}
@@ -462,10 +459,11 @@ func pathMatches(
 func splitPath(
 	path string,
 ) []string {
-	path = strings.Trim(
-		path,
-		"/",
-	)
+	path =
+		strings.Trim(
+			path,
+			"/",
+		)
 
 	if path == "" {
 		return []string{}
@@ -490,7 +488,9 @@ func evaluateStatus(
 	expr ComparisonExpression,
 	item LogItem,
 ) (bool, error) {
-	expected, ok := expr.Value.Value.(int)
+	expected, ok :=
+		expr.Value.Value.(int)
+
 	if !ok {
 		return false, newQueryError(
 			queryString,
@@ -502,14 +502,17 @@ func evaluateStatus(
 		)
 	}
 
-	response := item.Log.GetResponse()
+	response :=
+		item.Log.GetResponse()
+
 	if response == nil {
 		return false, nil
 	}
 
-	actual := int(
-		response.StatusCode,
-	)
+	actual :=
+		int(
+			response.StatusCode,
+		)
 
 	switch expr.Operator.Type {
 	case OperatorTypeEqual:
@@ -562,10 +565,12 @@ func evaluateTimestamp(
 		)
 	}
 
-	expected, err := time.Parse(
-		time.RFC3339Nano,
-		expectedRaw,
-	)
+	expected, err :=
+		time.Parse(
+			time.RFC3339Nano,
+			expectedRaw,
+		)
+
 	if err != nil {
 		return false, newQueryError(
 			queryString,
@@ -580,15 +585,22 @@ func evaluateTimestamp(
 
 	var actual time.Time
 
-	switch event := item.Log.Event.(type) {
+	switch event :=
+		item.Log.Event.(type) {
+
 	case *queryv1.Log_Request:
 		if event.Request == nil ||
 			event.Request.Metadata == nil ||
 			event.Request.Metadata.Timestamp == nil {
+
 			return false, nil
 		}
 
-		if err := event.Request.Metadata.Timestamp.CheckValid(); err != nil {
+		if err :=
+			event.Request.Metadata.
+				Timestamp.
+				CheckValid(); err != nil {
+
 			return false, fmt.Errorf(
 				"invalid request timestamp: %w",
 				err,
@@ -596,16 +608,23 @@ func evaluateTimestamp(
 		}
 
 		actual =
-			event.Request.Metadata.Timestamp.AsTime()
+			event.Request.Metadata.
+				Timestamp.
+				AsTime()
 
 	case *queryv1.Log_Response:
 		if event.Response == nil ||
 			event.Response.Metadata == nil ||
 			event.Response.Metadata.Timestamp == nil {
+
 			return false, nil
 		}
 
-		if err := event.Response.Metadata.Timestamp.CheckValid(); err != nil {
+		if err :=
+			event.Response.Metadata.
+				Timestamp.
+				CheckValid(); err != nil {
+
 			return false, fmt.Errorf(
 				"invalid response timestamp: %w",
 				err,
@@ -613,7 +632,9 @@ func evaluateTimestamp(
 		}
 
 		actual =
-			event.Response.Metadata.Timestamp.AsTime()
+			event.Response.Metadata.
+				Timestamp.
+				AsTime()
 
 	default:
 		return false, nil
@@ -674,7 +695,9 @@ func evaluateFindingsCount(
 	expr ComparisonExpression,
 	item LogItem,
 ) (bool, error) {
-	expected, ok := expr.Value.Value.(int)
+	expected, ok :=
+		expr.Value.Value.(int)
+
 	if !ok {
 		return false, newQueryError(
 			queryString,
@@ -686,9 +709,10 @@ func evaluateFindingsCount(
 		)
 	}
 
-	actual := len(
-		item.Findings,
-	)
+	actual :=
+		len(
+			item.Findings,
+		)
 
 	switch expr.Operator.Type {
 	case OperatorTypeEqual:
