@@ -100,6 +100,7 @@ func RunServer(
 
 	nm := nodes.NewNodeManager(
 		appLogger,
+		cfg,
 	)
 
 	defer nm.Close()
