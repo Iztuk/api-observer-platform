@@ -1,0 +1,825 @@
+/* =========================================
+   Analysis Page
+========================================= */
+
+.analysis-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+}
+
+/* =========================================
+   Search Form
+========================================= */
+
+.analysis-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* =========================================
+   Search Bar
+========================================= */
+
+.analysis-search {
+  display: flex;
+  align-items: stretch;
+
+  width: 100%;
+  min-width: 0;
+
+  background: var(--background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+
+  overflow: hidden;
+
+  transition: border-color 0.15s ease;
+}
+
+.analysis-search:focus-within {
+  border-color: var(--text-color);
+}
+
+.analysis-search input {
+  flex: 1;
+
+  width: 100%;
+  min-width: 0;
+
+  padding: 0.9rem 1rem;
+
+  color: var(--text-color);
+  background: transparent;
+
+  border: none;
+  outline: none;
+
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.analysis-search input::placeholder {
+  color: var(--muted-text-color);
+}
+
+.analysis-search input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+/* =========================================
+   Search Button
+========================================= */
+
+.analysis-search-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  flex-shrink: 0;
+
+  padding: 0.75rem 1.25rem;
+
+  color: var(--text-color);
+  background: var(--sidebar-background);
+
+  border: none;
+  border-left: 1px solid var(--border-color);
+
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: background 0.15s ease;
+}
+
+.analysis-search-button:hover {
+  background: var(--hover-background);
+}
+
+.analysis-search-button:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: -3px;
+}
+
+.analysis-search-button svg {
+  flex-shrink: 0;
+}
+
+/* =========================================
+   Advanced Settings
+========================================= */
+
+.analysis-advanced {
+  min-width: 0;
+
+  background: var(--sidebar-background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+}
+
+.analysis-advanced summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  padding: 0.85rem 1rem;
+
+  color: var(--text-color);
+
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  cursor: pointer;
+
+  list-style: none;
+  user-select: none;
+}
+
+.analysis-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.analysis-advanced summary:hover {
+  background: var(--hover-background);
+}
+
+.analysis-advanced summary:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: -3px;
+}
+
+.analysis-advanced summary svg {
+  flex-shrink: 0;
+  color: var(--muted-text-color);
+
+  transition: transform 0.15s ease;
+}
+
+.analysis-advanced[open] summary svg {
+  transform: rotate(180deg);
+}
+
+/* =========================================
+   Advanced Filters
+========================================= */
+
+.analysis-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+
+  padding: 1rem;
+
+  border-top: 1px solid var(--border-color);
+}
+
+.analysis-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  min-width: 0;
+}
+
+.analysis-filter label {
+  color: var(--muted-text-color);
+
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.analysis-filter input,
+.analysis-filter select {
+  width: 100%;
+  min-width: 0;
+
+  box-sizing: border-box;
+
+  padding: 0.75rem;
+
+  color: var(--text-color);
+  background: var(--background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.analysis-filter input:focus,
+.analysis-filter select:focus {
+  outline: 2px solid var(--text-color);
+  outline-offset: 1px;
+}
+
+.analysis-filter input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+/* =========================================
+   Analysis Toolbar
+========================================= */
+
+.analysis-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+
+  flex-shrink: 0;
+
+  width: 100%;
+  min-width: 0;
+
+  box-sizing: border-box;
+
+  padding: 0.4rem;
+
+  background: var(--sidebar-background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+}
+
+.analysis-view-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* =========================================
+   View Tabs
+========================================= */
+
+.analysis-view-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  flex-shrink: 0;
+
+  padding: 0.6rem 1rem;
+
+  color: var(--muted-text-color);
+  background: transparent;
+
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.analysis-view-tab:hover {
+  color: var(--text-color);
+  background: var(--hover-background);
+}
+
+.analysis-view-tab.active {
+  color: var(--text-color);
+  background: var(--background);
+
+  border-color: var(--border-color);
+}
+
+.analysis-view-tab:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: 2px;
+}
+
+/* =========================================
+   Workspace
+========================================= */
+
+.analysis-workspace {
+  display: flex;
+  flex-direction: column;
+
+  flex: 1 1 0;
+
+  width: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+}
+
+.analysis-results[hidden],
+.analysis-editor[hidden] {
+  display: none;
+}
+
+/* =========================================
+   Results
+========================================= */
+
+.analysis-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  flex: 1 1 0;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+}
+
+.analysis-stream-status {
+  flex-shrink: 0;
+
+  color: var(--muted-text-color);
+
+  font-size: 0.8rem;
+}
+
+/* =========================================
+   Results Header
+========================================= */
+
+.analysis-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+
+  flex-shrink: 0;
+}
+
+.analysis-results-header h2 {
+  margin: 0;
+
+  color: var(--text-color);
+
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* =========================================
+   Table Container
+========================================= */
+
+.analysis-table-container {
+  flex: 1 1 0;
+
+  min-width: 0;
+  min-height: 0;
+
+  background: var(--background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+
+  overflow: auto;
+
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+/* =========================================
+   Table
+========================================= */
+
+.analysis-table {
+  width: 100%;
+  min-width: 900px;
+
+  border-collapse: separate;
+  border-spacing: 0;
+
+  color: var(--text-color);
+
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.analysis-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+
+  background: var(--sidebar-background);
+}
+
+.analysis-table th {
+  padding: 0.9rem 1rem;
+
+  color: var(--muted-text-color);
+
+  border-bottom: 1px solid var(--border-color);
+
+  font-size: 0.75rem;
+  font-weight: 600;
+
+  white-space: nowrap;
+}
+
+.analysis-table td {
+  padding: 0.9rem 1rem;
+
+  border-bottom: 1px solid var(--border-color);
+
+  vertical-align: middle;
+}
+
+.analysis-table td,
+.analysis-table th {
+  max-width: 400px;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================================
+   Expandable Log Row
+========================================= */
+
+.analysis-log-row {
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.analysis-log-row:hover {
+  background: var(--hover-background);
+}
+
+.analysis-log-row:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: -2px;
+}
+
+.analysis-log-row[aria-expanded="true"] {
+  background: var(--hover-background);
+}
+
+.analysis-toggle-cell {
+  width: 2rem;
+  min-width: 2rem;
+  max-width: 2rem;
+
+  padding-right: 0.25rem !important;
+
+  text-align: center;
+}
+
+.analysis-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 1.25rem;
+  height: 1.25rem;
+
+  color: var(--muted-text-color);
+
+  font-size: 1.25rem;
+  line-height: 1;
+
+  user-select: none;
+
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
+}
+
+.analysis-log-row:hover .analysis-row-toggle,
+.analysis-log-row[aria-expanded="true"] .analysis-row-toggle {
+  color: var(--text-color);
+}
+
+/* =========================================
+   Expanded Detail Row
+========================================= */
+
+.analysis-log-details-row {
+  background: var(--sidebar-background);
+}
+
+.analysis-log-details-row[hidden] {
+  display: none;
+}
+
+.analysis-log-details-row > td {
+  padding: 0;
+
+  border-bottom: 1px solid var(--border-color);
+}
+
+.analysis-log-details {
+  padding: 1rem 1.25rem 1.25rem;
+
+  border-left: 3px solid var(--border-color);
+}
+
+/* =========================================
+   Finding Detail Fields
+========================================= */
+
+.analysis-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+
+  min-width: 0;
+}
+
+.analysis-detail-label {
+  color: var(--muted-text-color);
+
+  font-size: 0.7rem;
+  font-weight: 600;
+
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.analysis-detail-value {
+  color: var(--text-color);
+
+  font-size: 0.85rem;
+  line-height: 1.45;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================================
+   Findings
+========================================= */
+
+.analysis-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.analysis-findings-title {
+  color: var(--text-color);
+
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.analysis-findings-empty {
+  padding: 0.75rem;
+
+  color: var(--muted-text-color);
+  background: var(--background);
+
+  border: 1px dashed var(--border-color);
+  border-radius: 0.375rem;
+
+  font-size: 0.8rem;
+}
+
+/* =========================================
+   Finding Card
+========================================= */
+
+.analysis-finding {
+  padding: 1rem;
+
+  background: var(--background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+}
+
+.analysis-finding-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  gap: 1rem 1.5rem;
+}
+
+.analysis-finding-fields .analysis-detail-field:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+/* =========================================
+   Rule Editor
+========================================= */
+
+.analysis-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  flex: 1 1 0;
+
+  min-width: 0;
+  min-height: 0;
+
+  overflow: hidden;
+}
+
+/* =========================================
+   Editor Header
+========================================= */
+
+.analysis-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+
+  flex-shrink: 0;
+}
+
+.analysis-editor-header h2 {
+  margin: 0;
+
+  color: var(--text-color);
+
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.analysis-editor-header p {
+  margin: 0.35rem 0 0;
+
+  color: var(--muted-text-color);
+
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+/* =========================================
+   Monaco Editor Container
+========================================= */
+
+.analysis-editor-content {
+  display: flex;
+
+  flex: 1 1 0;
+
+  width: 100%;
+
+  min-width: 0;
+  min-height: 0;
+
+  background: var(--background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+
+  overflow: hidden;
+}
+
+.analysis-monaco-editor {
+  flex: 1 1 0;
+
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+   Monaco creates its own nested layout nodes.
+
+   Keeping these at full height allows the editor
+   to completely fill the Analysis workspace.
+*/
+
+.analysis-monaco-editor > .monaco-editor {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* =========================================
+   Editor Actions
+========================================= */
+
+.analysis-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+
+  flex-shrink: 0;
+}
+
+.analysis-primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  padding: 0.75rem 1.25rem;
+
+  color: var(--text-color);
+  background: var(--sidebar-background);
+
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: background 0.15s ease;
+}
+
+.analysis-primary-button:hover {
+  background: var(--hover-background);
+}
+
+.analysis-primary-button:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: 2px;
+}
+
+/* =========================================
+   Empty State
+========================================= */
+
+.analysis-empty {
+  color: var(--muted-text-color);
+
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* =========================================
+   Responsive Layout
+========================================= */
+
+@media (max-width: 700px) {
+  .analysis-page {
+    gap: 1rem;
+  }
+
+  .analysis-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-search-button {
+    padding: 0.75rem 1rem;
+  }
+
+  .analysis-search-button span {
+    display: none;
+  }
+
+  .analysis-view-tab {
+    padding: 0.6rem 0.85rem;
+  }
+
+  .analysis-table {
+    min-width: 800px;
+  }
+
+  .analysis-log-details {
+    padding: 0.85rem;
+  }
+
+  .analysis-finding-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-finding-fields .analysis-detail-field:nth-child(3) {
+    grid-column: auto;
+  }
+
+  .analysis-editor-actions {
+    justify-content: stretch;
+  }
+
+  .analysis-primary-button {
+    width: 100%;
+  }
+}

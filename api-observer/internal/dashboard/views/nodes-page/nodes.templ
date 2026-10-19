@@ -1,0 +1,229 @@
+package nodespage
+
+import (
+	"api-observer/internal/dashboard/views"
+	"api-observer/internal/nodes"
+	"fmt"
+)
+
+templ NodesPage(title string, nodes []*nodes.Node) {
+	@views.Layout(title) {
+		<link rel="stylesheet" href="/static/css/nodes.css"/>
+		@NodesPageContent(nodes)
+		@RenameNodeModal()
+		@FormValidationScript()
+		@RenameNodeModalScript()
+	}
+}
+
+templ NodesPageContent(nodes []*nodes.Node) {
+	<div class="nodes-page">
+		<header class="nodes-page-header">
+			<h2>Nodes</h2>
+			<p>
+				Review collectors connected to API Observer
+			</p>
+		</header>
+		<section
+			id="nodes-section"
+			class="nodes-section"
+		>
+			@NodesList(nodes)
+		</section>
+	</div>
+}
+
+templ NodesList(nodes []*nodes.Node) {
+	<div class="nodes-list-header">
+		<h3>Registered Nodes</h3>
+		<span class="nodes-count">
+			{ fmt.Sprintf("%d nodes", len(nodes)) }
+		</span>
+	</div>
+	<div
+		class="nodes-workspace"
+		id="nodes-workspace"
+	>
+		<div
+			id="nodes-list"
+			class="nodes-list"
+		>
+			if len(nodes) == 0 {
+				<div class="nodes-empty">
+					<p>
+						No nodes currently connected.
+					</p>
+				</div>
+			} else {
+				for _, node := range nodes {
+					<div
+						class="node-item"
+						data-node-id={ node.ID }
+						data-node-name={ node.Name }
+					>
+						<div class="node-details">
+							<div class="node-primary">
+								<div
+									class={
+										"node-status",
+										templ.KV(
+											"node-status-connected",
+											node.Connected(),
+										),
+										templ.KV(
+											"node-status-disconnected",
+											!node.Connected(),
+										),
+									}
+								></div>
+								<p class="node-name">
+									{ node.Name }
+								</p>
+							</div>
+							<p class="node-id">
+								{ node.ID }
+							</p>
+							<p class="node-addr">
+								{ node.Addr }
+							</p>
+						</div>
+						<div class="node-actions">
+							<button
+								type="button"
+								data-node-id={ node.ID }
+								data-node-name={ node.Name }
+								onclick="openRenameNodeModal(this)"
+							>
+								Rename
+							</button>
+						</div>
+					</div>
+				}
+			}
+		</div>
+	</div>
+}
+
+templ RenameNodeModal() {
+	<dialog
+		id="renameNodeModal"
+		class="modal"
+	>
+		<form
+			id="rename-node-form"
+			class="modal-form"
+			data-validate-form
+			hx-post="/nodes/name"
+			hx-target="#nodes-section"
+			hx-swap="innerHTML"
+		>
+			<header>
+				<h2>Rename Node</h2>
+			</header>
+			<input
+				type="hidden"
+				name="node-id"
+				id="rename-node-id"
+			/>
+			<div class="modal-form-field">
+				<label for="rename-node-name">
+					Name
+				</label>
+				<input
+					type="text"
+					name="name"
+					id="rename-node-name"
+					required
+				/>
+			</div>
+			<div class="modal-actions">
+				<button
+					type="button"
+					onclick="document.getElementById('renameNodeModal').close()"
+				>
+					Cancel
+				</button>
+				<button
+					type="submit"
+					data-submit-button
+					onclick="document.getElementById('renameNodeModal').close()"
+				>
+					Save
+				</button>
+			</div>
+		</form>
+	</dialog>
+}
+
+templ FormValidationScript() {
+	<script>
+		(() => {
+			const forms = document.querySelectorAll("[data-validate-form]");
+
+			forms.forEach((form) => {
+				const submitButton = form.querySelector("[data-submit-button]");
+
+				if (!submitButton) {
+					return;
+				}
+
+				const checkValidity = () => {
+					submitButton.disabled = !form.checkValidity();
+				};
+
+				form.addEventListener("input", checkValidity);
+
+				form.addEventListener("change", checkValidity);
+
+				form.addEventListener("reset", () => {
+					requestAnimationFrame(checkValidity);
+				});
+
+				checkValidity();
+			});
+		})();
+	</script>
+}
+
+templ RenameNodeModalScript() {
+	<script>
+		function openRenameNodeModal(button) {
+			const modal = document.getElementById("renameNodeModal");
+
+			const idInput = document.getElementById("rename-node-id");
+
+			const nameInput = document.getElementById("rename-node-name");
+
+			const form = document.getElementById("rename-node-form");
+
+			if (!button || !modal || !idInput || !nameInput || !form) {
+				return;
+			}
+
+			const nodeID = button.dataset.nodeId;
+
+			const nodeName = button.dataset.nodeName;
+
+			if (!nodeID) {
+				return;
+			}
+
+			idInput.value = nodeID;
+
+			nameInput.value = nodeName || "";
+
+			nameInput.dispatchEvent(
+				new Event("input", {
+					bubbles: true,
+				}),
+			);
+
+			modal.showModal();
+
+			requestAnimationFrame(() => {
+				nameInput.focus();
+				nameInput.select();
+			});
+		}
+	</script>
+}

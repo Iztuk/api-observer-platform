@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package apiobserver.ingest.v1;
+
+option go_package = "api-observer/proto/ingest/v1;ingestv1";
+
+import "google/protobuf/timestamp.proto";
+
+service IngestService {
+  rpc Ingest(stream Record) returns (stream IngestAck);
+  rpc Logs(LogRequest) returns (stream LogTransaction);
+}
+
+message Record {
+  oneof event {
+    Request request = 1;
+    Response response = 2;
+    Heartbeat heartbeat = 3;
+  }
+}
+
+message Heartbeat {
+  string collector_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message Metadata {
+  string request_id = 1;
+  string source = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message HeaderValues {
+  repeated string values = 1;
+}
+
+message Request {
+  string method = 1;
+  string url = 2;
+  map<string, HeaderValues> headers = 3;
+  string body = 4;
+  int64 content_length = 5;
+  Metadata metadata = 6;
+}
+
+message Response {
+  int32 status_code = 1;
+  map<string, HeaderValues> headers = 2;
+  string body = 3;
+  int64 content_length = 4;
+  Metadata metadata = 5;
+}
+
+enum IngestStatus {
+  INGEST_STATUS_UNSPECIFIED = 0;
+  INGEST_STATUS_ACCEPTED = 1;
+  INGEST_STATUS_REJECTED = 2;
+}
+
+message IngestAck {
+  string record_id = 1;
+  IngestStatus status = 2;
+  string message = 3;
+  bool retryable = 4;
+}
+
+message LogRequest {
+  google.protobuf.Timestamp start_date = 1;
+  google.protobuf.Timestamp end_date = 2;
+
+  LogCursor cursor = 3;
+}
+
+message LogCursor {
+  google.protobuf.Timestamp timestamp = 1;
+  string request_id = 2;
+}
+
+message LogTransaction {
+  Request request = 1;
+  Response response = 2;
+
+  LogCursor cursor = 3;
+}
+

@@ -1,0 +1,1302 @@
+package analysis
+
+import "api-observer/internal/dashboard/views"
+
+templ AnalysisPage(
+	title string,
+	queryString string,
+	start string,
+	end string,
+) {
+	@views.Layout(title) {
+		<link
+			rel="stylesheet"
+			href="/static/css/analysis.css"
+		/>
+
+		<link
+			rel="stylesheet"
+			href="/static/js/monaco.css"
+		/>
+
+		@AnalysisPageContent(
+			queryString,
+			start,
+			end,
+		)
+
+		<script
+			type="module"
+			src="/static/js/monaco.js"
+		></script>
+
+		@AnalysisStreamScript()
+	}
+}
+
+templ AnalysisPageContent(
+	queryString string,
+	start string,
+	end string,
+) {
+	<div class="analysis-page">
+		<form
+			id="analysis-form"
+			class="analysis-form"
+		>
+			<div class="analysis-search">
+				<input
+					type="search"
+					id="analysis-query"
+					name="query"
+					value={ queryString }
+					placeholder="Search logs..."
+					aria-label="Search logs"
+				/>
+
+				<button
+					type="submit"
+					class="analysis-search-button"
+					aria-label="Search"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<circle
+							cx="11"
+							cy="11"
+							r="8"
+						></circle>
+
+						<line
+							x1="21"
+							y1="21"
+							x2="16.65"
+							y2="16.65"
+						></line>
+					</svg>
+
+					<span>
+						Search
+					</span>
+				</button>
+			</div>
+
+			<details class="analysis-advanced">
+				<summary>
+					<span>
+						Advanced Settings
+					</span>
+
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="m6 9 6 6 6-6"></path>
+					</svg>
+				</summary>
+
+				<div class="analysis-filters">
+					<div class="analysis-filter">
+						<label for="analysis-start">
+							Start Date
+						</label>
+
+						<input
+							type="datetime-local"
+							id="analysis-start"
+							name="start"
+							value={ start }
+						/>
+					</div>
+
+					<div class="analysis-filter">
+						<label for="analysis-end">
+							End Date
+						</label>
+
+						<input
+							type="datetime-local"
+							id="analysis-end"
+							name="end"
+							value={ end }
+						/>
+					</div>
+				</div>
+			</details>
+
+			<textarea
+				id="analysis-rules"
+				name="rules"
+				hidden
+			></textarea>
+		</form>
+
+		<div class="analysis-toolbar">
+			<div
+				class="analysis-view-switcher"
+				role="tablist"
+				aria-label="Analysis view"
+			>
+				<button
+					id="analysis-logs-tab"
+					type="button"
+					class="analysis-view-tab active"
+					role="tab"
+					aria-selected="true"
+					aria-controls="analysis-results"
+				>
+					Logs
+				</button>
+
+				<button
+					id="analysis-rules-tab"
+					type="button"
+					class="analysis-view-tab"
+					role="tab"
+					aria-selected="false"
+					aria-controls="analysis-editor"
+				>
+					Rules
+				</button>
+			</div>
+		</div>
+
+		<div class="analysis-workspace">
+			<section
+				id="analysis-results"
+				class="analysis-results"
+			>
+				<div
+					id="analysis-stream-status"
+					class="analysis-stream-status"
+				>
+					Ready
+				</div>
+
+				<div class="analysis-table-container">
+					<table class="analysis-table">
+						<thead>
+							<tr>
+								<th></th>
+								<th>Timestamp</th>
+								<th>Node</th>
+								<th>Type</th>
+								<th>Method</th>
+								<th>Path</th>
+								<th>Status</th>
+								<th>Findings</th>
+							</tr>
+						</thead>
+
+						<tbody id="analysis-log-body">
+							<tr id="analysis-empty-row">
+								<td
+									colspan="8"
+									class="analysis-empty"
+								>
+									Search to analyze logs.
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
+
+			<section
+				id="analysis-editor"
+				class="analysis-editor"
+				hidden
+			>
+				<div class="analysis-editor-header">
+					<div>
+						<h2>
+							Rule Set
+						</h2>
+
+						<p>
+							These rules are applied to each streamed log record.
+						</p>
+					</div>
+				</div>
+
+				<div class="analysis-editor-content">
+					<div
+						id="analysis-rules-editor"
+						class="api-observer-editor analysis-monaco-editor"
+						data-language="yaml"
+					></div>
+				</div>
+			</section>
+		</div>
+	</div>
+}
+
+templ AnalysisStreamScript() {
+	<script>
+		(() => {
+			const form =
+				document.getElementById(
+					"analysis-form",
+				);
+
+			const body =
+				document.getElementById(
+					"analysis-log-body",
+				);
+
+			const results =
+				document.getElementById(
+					"analysis-results",
+				);
+
+			const editorSection =
+				document.getElementById(
+					"analysis-editor",
+				);
+
+			const rulesEditorElement =
+				document.getElementById(
+					"analysis-rules-editor",
+				);
+
+			const rulesInput =
+				document.getElementById(
+					"analysis-rules",
+				);
+
+			const logsTab =
+				document.getElementById(
+					"analysis-logs-tab",
+				);
+
+			const rulesTab =
+				document.getElementById(
+					"analysis-rules-tab",
+				);
+
+			const statusElement =
+				document.getElementById(
+					"analysis-stream-status",
+				);
+
+			if (
+				!form ||
+				!body ||
+				!results ||
+				!editorSection ||
+				!rulesEditorElement ||
+				!rulesInput
+			) {
+				return;
+			}
+
+			let controller =
+				null;
+
+			let rulesEditor =
+				null;
+
+			let rowCount =
+				0;
+
+			let completedNodes =
+				0;
+
+			let failedNodes =
+				0;
+
+			const initializeRulesEditor =
+				() => {
+					if (
+						rulesEditor ||
+						!window.monaco
+					) {
+						return;
+					}
+
+					rulesEditor =
+						window.monaco.editor.create(
+							rulesEditorElement,
+							{
+								value:
+									rulesInput.value,
+
+								language:
+									"yaml",
+
+								automaticLayout:
+									true,
+
+								minimap: {
+									enabled:
+										false,
+								},
+
+								scrollBeyondLastLine:
+									false,
+
+								wordWrap:
+									"off",
+
+								tabSize:
+									2,
+							},
+						);
+
+					rulesEditor.onDidChangeModelContent(
+						() => {
+							rulesInput.value =
+								rulesEditor.getValue();
+						},
+					);
+				};
+
+			if (window.monaco) {
+				initializeRulesEditor();
+			} else {
+				window.addEventListener(
+					"monaco:ready",
+					initializeRulesEditor,
+					{
+						once:
+							true,
+					},
+				);
+			}
+
+			const showResults =
+				() => {
+					results.hidden =
+						false;
+
+					editorSection.hidden =
+						true;
+
+					if (logsTab) {
+						logsTab.classList.add(
+							"active",
+						);
+
+						logsTab.setAttribute(
+							"aria-selected",
+							"true",
+						);
+					}
+
+					if (rulesTab) {
+						rulesTab.classList.remove(
+							"active",
+						);
+
+						rulesTab.setAttribute(
+							"aria-selected",
+							"false",
+						);
+					}
+				};
+
+			const showEditor =
+				() => {
+					results.hidden =
+						true;
+
+					editorSection.hidden =
+						false;
+
+					if (logsTab) {
+						logsTab.classList.remove(
+							"active",
+						);
+
+						logsTab.setAttribute(
+							"aria-selected",
+							"false",
+						);
+					}
+
+					if (rulesTab) {
+						rulesTab.classList.add(
+							"active",
+						);
+
+						rulesTab.setAttribute(
+							"aria-selected",
+							"true",
+						);
+					}
+
+					initializeRulesEditor();
+
+					if (rulesEditor) {
+						requestAnimationFrame(
+							() => {
+								rulesEditor.layout();
+							},
+						);
+					}
+				};
+
+			if (logsTab) {
+				logsTab.addEventListener(
+					"click",
+					showResults,
+				);
+			}
+
+			if (rulesTab) {
+				rulesTab.addEventListener(
+					"click",
+					showEditor,
+				);
+			}
+
+			const removeEmptyRow =
+				() => {
+					const empty =
+						document.getElementById(
+							"analysis-empty-row",
+						);
+
+					if (empty) {
+						empty.remove();
+					}
+				};
+
+			const clearResults =
+				() => {
+					body.innerHTML =
+						"";
+
+					const row =
+						document.createElement(
+							"tr",
+						);
+
+					row.id =
+						"analysis-empty-row";
+
+					const cell =
+						document.createElement(
+							"td",
+						);
+
+					cell.colSpan =
+						8;
+
+					cell.className =
+						"analysis-empty";
+
+					cell.textContent =
+						"Loading logs...";
+
+					row.append(
+						cell,
+					);
+
+					body.append(
+						row,
+					);
+
+					rowCount =
+						0;
+
+					completedNodes =
+						0;
+
+					failedNodes =
+						0;
+				};
+
+			const createCell =
+				(value) => {
+					const cell =
+						document.createElement(
+							"td",
+						);
+
+					if (
+						value !== undefined &&
+						value !== null
+					) {
+						cell.textContent =
+							String(value);
+					}
+
+					return cell;
+				};
+
+			const createDetailField =
+				(
+					label,
+					value,
+				) => {
+					const field =
+						document.createElement(
+							"div",
+						);
+
+					field.className =
+						"analysis-detail-field";
+
+					const labelElement =
+						document.createElement(
+							"span",
+						);
+
+					labelElement.className =
+						"analysis-detail-label";
+
+					labelElement.textContent =
+						label;
+
+					const valueElement =
+						document.createElement(
+							"span",
+						);
+
+					valueElement.className =
+						"analysis-detail-value";
+
+					valueElement.textContent =
+						value ?? "";
+
+					field.append(
+						labelElement,
+						valueElement,
+					);
+
+					return field;
+				};
+
+			const createFinding =
+				(finding) => {
+					const findingElement =
+						document.createElement(
+							"div",
+						);
+
+					findingElement.className =
+						"analysis-finding";
+
+					if (finding.severity) {
+						findingElement.dataset.severity =
+							finding.severity;
+					}
+
+					const fields =
+						document.createElement(
+							"div",
+						);
+
+					fields.className =
+						"analysis-finding-fields";
+
+					fields.append(
+						createDetailField(
+							"Title",
+							finding.title ||
+								"Finding",
+						),
+
+						createDetailField(
+							"Severity",
+							finding.severity ||
+								"Unknown",
+						),
+
+						createDetailField(
+							"Message",
+							finding.message ||
+								"",
+						),
+					);
+
+					if (
+						Array.isArray(
+							finding.tags,
+						) &&
+						finding.tags.length > 0
+					) {
+						fields.append(
+							createDetailField(
+								"Tags",
+								finding.tags.join(
+									", ",
+								),
+							),
+						);
+					}
+
+					findingElement.append(
+						fields,
+					);
+
+					return findingElement;
+				};
+
+			const createDetailsRow =
+				(log) => {
+					const detailsRow =
+						document.createElement(
+							"tr",
+						);
+
+					detailsRow.className =
+						"analysis-log-details-row";
+
+					detailsRow.hidden =
+						true;
+
+					const cell =
+						document.createElement(
+							"td",
+						);
+
+					cell.colSpan =
+						8;
+
+					const details =
+						document.createElement(
+							"div",
+						);
+
+					details.className =
+						"analysis-log-details";
+
+					const findings =
+						Array.isArray(
+							log.findings,
+						)
+							? log.findings
+							: [];
+
+					const findingsSection =
+						document.createElement(
+							"div",
+						);
+
+					findingsSection.className =
+						"analysis-findings";
+
+					const title =
+						document.createElement(
+							"div",
+						);
+
+					title.className =
+						"analysis-findings-title";
+
+					title.textContent =
+						"Findings (" +
+						findings.length +
+						")";
+
+					findingsSection.append(
+						title,
+					);
+
+					if (
+						findings.length === 0
+					) {
+						const empty =
+							document.createElement(
+								"div",
+							);
+
+						empty.className =
+							"analysis-findings-empty";
+
+						empty.textContent =
+							"No findings for this log.";
+
+						findingsSection.append(
+							empty,
+						);
+					} else {
+						for (
+							const finding
+							of findings
+						) {
+							findingsSection.append(
+								createFinding(
+									finding,
+								),
+							);
+						}
+					}
+
+					details.append(
+						findingsSection,
+					);
+
+					cell.append(
+						details,
+					);
+
+					detailsRow.append(
+						cell,
+					);
+
+					return detailsRow;
+				};
+
+			const appendRow =
+				(log) => {
+					removeEmptyRow();
+
+					const findings =
+						Array.isArray(
+							log.findings,
+						)
+							? log.findings
+							: [];
+
+					const row =
+						document.createElement(
+							"tr",
+						);
+
+					row.className =
+						"analysis-log-row";
+
+					row.tabIndex =
+						0;
+
+					row.setAttribute(
+						"role",
+						"button",
+					);
+
+					row.setAttribute(
+						"aria-expanded",
+						"false",
+					);
+
+					const timestamp =
+						log.timestamp
+							? new Date(
+									log.timestamp,
+								).toLocaleString()
+							: "";
+
+					const toggleCell =
+						document.createElement(
+							"td",
+						);
+
+					toggleCell.className =
+						"analysis-toggle-cell";
+
+					const rowToggle =
+						document.createElement(
+							"span",
+						);
+
+					rowToggle.className =
+						"analysis-row-toggle";
+
+					rowToggle.textContent =
+						"›";
+
+					toggleCell.append(
+						rowToggle,
+					);
+
+					row.append(
+						toggleCell,
+
+						createCell(
+							timestamp,
+						),
+
+						createCell(
+							log.node_name ||
+								"",
+						),
+
+						createCell(
+							log.type ||
+								"",
+						),
+
+						createCell(
+							log.method ||
+								"",
+						),
+
+						createCell(
+							log.path ||
+								"",
+						),
+
+						createCell(
+							log.status ??
+								"",
+						),
+
+						createCell(
+							findings.length,
+						),
+					);
+
+					const detailsRow =
+						createDetailsRow(
+							log,
+						);
+
+					const toggleDetails =
+						() => {
+							const expanded =
+								row.getAttribute(
+									"aria-expanded",
+								) === "true";
+
+							row.setAttribute(
+								"aria-expanded",
+								expanded
+									? "false"
+									: "true",
+							);
+
+							detailsRow.hidden =
+								expanded;
+
+							rowToggle.textContent =
+								expanded
+									? "›"
+									: "⌄";
+						};
+
+					row.addEventListener(
+						"click",
+						toggleDetails,
+					);
+
+					row.addEventListener(
+						"keydown",
+						(event) => {
+							if (
+								event.key ===
+									"Enter" ||
+								event.key ===
+									" "
+							) {
+								event.preventDefault();
+
+								toggleDetails();
+							}
+						},
+					);
+
+					body.append(
+						row,
+						detailsRow,
+					);
+
+					rowCount++;
+				};
+
+			const updateStatus =
+				(message) => {
+					if (!statusElement) {
+						return;
+					}
+
+					statusElement.textContent =
+						message;
+				};
+
+			const closeStream =
+				() => {
+					if (!controller) {
+						return;
+					}
+
+					controller.abort();
+
+					controller =
+						null;
+				};
+
+			const handleSSEEvent =
+				(
+					eventName,
+					data,
+				) => {
+					switch (eventName) {
+					case "logs": {
+						const logs =
+							JSON.parse(
+								data,
+							);
+
+						for (
+							const log
+							of logs
+						) {
+							appendRow(
+								log,
+							);
+						}
+
+						updateStatus(
+							"Analyzing logs — " +
+								rowCount +
+								" matches",
+						);
+
+						break;
+					}
+
+					case "node_done": {
+						completedNodes++;
+
+						const nodeLabel =
+							completedNodes === 1
+								? "node complete"
+								: "nodes complete";
+
+						updateStatus(
+							"Analyzing logs — " +
+								rowCount +
+								" matches, " +
+								completedNodes +
+								" " +
+								nodeLabel,
+						);
+
+						break;
+					}
+
+					case "node_error": {
+						const result =
+							JSON.parse(
+								data,
+							);
+
+						failedNodes++;
+
+						console.error(
+							"Analysis stream failed:",
+							result.node_name ||
+								result.node_id,
+							result.message,
+						);
+
+						const errorLabel =
+							failedNodes === 1
+								? "node error"
+								: "node errors";
+
+						updateStatus(
+							"Analyzing logs — " +
+								rowCount +
+								" matches, " +
+								failedNodes +
+								" " +
+								errorLabel,
+						);
+
+						break;
+					}
+
+					case "done": {
+						const result =
+							JSON.parse(
+								data,
+							);
+
+						if (
+							rowCount === 0
+						) {
+							removeEmptyRow();
+
+							const row =
+								document.createElement(
+									"tr",
+								);
+
+							row.id =
+								"analysis-empty-row";
+
+							const cell =
+								document.createElement(
+									"td",
+								);
+
+							cell.colSpan =
+								8;
+
+							cell.className =
+								"analysis-empty";
+
+							cell.textContent =
+								"No logs found.";
+
+							row.append(
+								cell,
+							);
+
+							body.append(
+								row,
+							);
+						}
+
+						const nodeLabel =
+							result.completed_nodes === 1
+								? "node"
+								: "nodes";
+
+						let message =
+							"Complete — " +
+							result.matches +
+							" matches across " +
+							result.completed_nodes +
+							" " +
+							nodeLabel;
+
+						if (
+							result.failed_nodes > 0
+						) {
+							message +=
+								" (" +
+								result.failed_nodes +
+								" failed)";
+						}
+
+						updateStatus(
+							message,
+						);
+
+						break;
+					}
+					}
+				};
+
+			const consumeSSEStream =
+				async (
+					response,
+				) => {
+					if (!response.body) {
+						throw new Error(
+							"streaming response body is unavailable",
+						);
+					}
+
+					const reader =
+						response.body.getReader();
+
+					const decoder =
+						new TextDecoder();
+
+					let buffer =
+						"";
+
+					while (true) {
+						const {
+							value,
+							done,
+						} =
+							await reader.read();
+
+						if (done) {
+							break;
+						}
+
+						buffer +=
+							decoder.decode(
+								value,
+								{
+									stream:
+										true,
+								},
+							);
+
+						const events =
+							buffer.split(
+								"\n\n",
+							);
+
+						buffer =
+							events.pop() ??
+							"";
+
+						for (
+							const rawEvent
+							of events
+						) {
+							if (
+								!rawEvent.trim()
+							) {
+								continue;
+							}
+
+							let eventName =
+								"message";
+
+							let data =
+								"";
+
+							for (
+								const line
+								of rawEvent.split(
+									"\n",
+								)
+							) {
+								if (
+									line.startsWith(
+										"event:",
+									)
+								) {
+									eventName =
+										line
+											.slice(
+												6,
+											)
+											.trim();
+
+									continue;
+								}
+
+								if (
+									line.startsWith(
+										"data:",
+									)
+								) {
+									data +=
+										line
+											.slice(
+												5,
+											)
+											.trim();
+								}
+							}
+
+							handleSSEEvent(
+								eventName,
+								data,
+							);
+						}
+					}
+				};
+
+			const startStream =
+				async () => {
+					closeStream();
+
+					clearResults();
+
+					showResults();
+
+					if (rulesEditor) {
+						rulesInput.value =
+							rulesEditor.getValue();
+					}
+
+					controller =
+						new AbortController();
+
+					const formData =
+						new FormData(
+							form,
+						);
+
+					try {
+						const response =
+							await fetch(
+								"/analysis/logs",
+								{
+									method:
+										"POST",
+
+									body:
+										formData,
+
+									signal:
+										controller.signal,
+								},
+							);
+
+						if (!response.ok) {
+							const message =
+								await response.text();
+
+							throw new Error(
+								"Analysis request failed (" +
+									response.status +
+									"): " +
+									message,
+							);
+						}
+
+						updateStatus(
+							"Analyzing logs...",
+						);
+
+						await consumeSSEStream(
+							response,
+						);
+					} catch (error) {
+						if (
+							error.name ===
+								"AbortError"
+						) {
+							return;
+						}
+
+						console.error(
+							"Analysis stream failed:",
+							error,
+						);
+
+						updateStatus(
+							error instanceof Error
+								? error.message
+								: "Analysis stream failed.",
+						);
+					} finally {
+						controller =
+							null;
+					}
+				};
+
+			form.addEventListener(
+				"submit",
+				(event) => {
+					event.preventDefault();
+
+					startStream();
+				},
+			);
+
+			window.addEventListener(
+				"beforeunload",
+				() => {
+					closeStream();
+
+					if (rulesEditor) {
+						rulesEditor.dispose();
+					}
+				},
+			);
+		})();
+	</script>
+}

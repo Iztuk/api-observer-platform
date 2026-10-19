@@ -1,0 +1,276 @@
+package rules
+
+import (
+	"api-observer/internal/audit"
+	"api-observer/internal/dashboard/views"
+	"fmt"
+)
+
+type RuleListItem struct {
+	ID   string
+	Rule *audit.Rule
+}
+
+templ RulesPage(title string, rules []RuleListItem) {
+	@views.Layout(title) {
+		<link rel="stylesheet" href="/static/css/rules.css"/>
+		@RulesPageContent(rules)
+		<script type="module" src="/static/js/rules.js"></script>
+	}
+}
+
+templ RulesPageContent(rules []RuleListItem) {
+	<div class="rules-page">
+		<header class="rules-page-header">
+			<h2>Rules</h2>
+			<p>Manage and review the rules used by API Observer.</p>
+		</header>
+		<section class="rules-section">
+			<a href="/rules/import">
+				Import Rules
+			</a>
+		</section>
+		<section class="rules-section">
+			<div class="rules-list-header">
+				<h3>Loaded Rules</h3>
+				<span class="rules-count">
+					{ fmt.Sprintf("%d rules", len(rules)) }
+				</span>
+			</div>
+			<div class="rules-workspace" id="rules-workspace">
+				<!-- Rule List -->
+				<div class="rules-list">
+					if len(rules) == 0 {
+						<div class="rules-empty">
+							<p>No rules are currently loaded.</p>
+						</div>
+					} else {
+						for i, item := range rules {
+							if item.Rule != nil {
+								<button
+									type="button"
+									class="rules-list-item"
+									data-rule-index={ fmt.Sprint(i) }
+									aria-controls={ fmt.Sprintf("rule-detail-%d", i) }
+									aria-expanded="false"
+								>
+									<div class="rules-list-info">
+										<h4>{ item.ID }</h4>
+										if item.Rule.Description != "" {
+											<p>{ item.Rule.Description }</p>
+										}
+										<div class="rules-list-scopes">
+											for _, scope := range item.Rule.Scope {
+												<span class="rules-scope">
+													{ string(scope) }
+												</span>
+											}
+										</div>
+									</div>
+									if item.Rule.Disabled {
+										<span class="rules-status rules-status-disabled">
+											Disabled
+										</span>
+									} else {
+										<span class="rules-status rules-status-enabled">
+											Enabled
+										</span>
+									}
+								</button>
+							}
+						}
+					}
+				</div>
+				<!-- Details Column -->
+				<aside
+					id="rules-details"
+					class="rules-details"
+					aria-label="Rule details"
+					hidden
+				>
+					<div class="rules-details-header">
+						<h3>Rule Details</h3>
+						<button
+							type="button"
+							id="rules-details-close"
+							class="rules-details-close"
+							aria-label="Close rule details"
+						>
+							&times;
+						</button>
+					</div>
+					for i, item := range rules {
+						if item.Rule != nil {
+							<section
+								id={ fmt.Sprintf("rule-detail-%d", i) }
+								class="rules-detail"
+								data-detail-index={ fmt.Sprint(i) }
+								hidden
+							>
+								@RuleDetails(item)
+							</section>
+						}
+					}
+				</aside>
+			</div>
+		</section>
+	</div>
+}
+
+// RuleDetails displays the complete rule as structured information.
+templ RuleDetails(item RuleListItem) {
+	<div class="rule-inspector">
+		<!-- Rule Summary -->
+		<div class="rule-inspector-summary">
+			<h4>{ item.ID }</h4>
+			<div class="rule-inspector-badges">
+				if item.Rule.Disabled {
+					<span class="rules-status rules-status-disabled">
+						Disabled
+					</span>
+				} else {
+					<span class="rules-status rules-status-enabled">
+						Enabled
+					</span>
+				}
+				for _, scope := range item.Rule.Scope {
+					<span class="rule-inspector-badge">
+						{ string(scope) }
+					</span>
+				}
+			</div>
+		</div>
+		<!-- Description -->
+		<section class="rule-inspector-section">
+			<h5>Description</h5>
+			if item.Rule.Description != "" {
+				<p>{ item.Rule.Description }</p>
+			} else {
+				<p class="rule-inspector-muted">
+					No description provided.
+				</p>
+			}
+		</section>
+		<!-- Matching -->
+		<section class="rule-inspector-section">
+			<h5>Matching Logic</h5>
+			<div class="rule-inspector-field">
+				<span>Match Mode</span>
+				if item.Rule.Match.Mode == audit.MatchModeAny {
+					<strong>ANY</strong>
+				} else {
+					<strong>ALL</strong>
+				}
+			</div>
+			<div class="rule-inspector-block">
+				<span>Conditions</span>
+				<div class="rule-inspector-conditions">
+					if len(item.Rule.Match.Conditions) == 0 {
+						<p class="rule-inspector-muted">
+							No conditions configured.
+						</p>
+					} else {
+						for i, condition := range item.Rule.Match.Conditions {
+							@RuleCondition(i+1, condition)
+						}
+					}
+				</div>
+			</div>
+		</section>
+		<!-- Finding -->
+		<section class="rule-inspector-section">
+			<h5>Finding</h5>
+			<div class="rule-inspector-field">
+				<span>Title</span>
+				<strong>{ item.Rule.Finding.Title }</strong>
+			</div>
+			<div class="rule-inspector-field">
+				<span>Severity</span>
+				if item.Rule.Finding.Severity != "" {
+					<strong>{ item.Rule.Finding.Severity }</strong>
+				} else {
+					<span>Not specified</span>
+				}
+			</div>
+			<div class="rule-inspector-block">
+				<span>Message</span>
+				if item.Rule.Finding.Message != "" {
+					<p>{ item.Rule.Finding.Message }</p>
+				} else {
+					<p class="rule-inspector-muted">
+						No message configured.
+					</p>
+				}
+			</div>
+			if len(item.Rule.Finding.Tags) > 0 {
+				<div class="rule-inspector-block">
+					<span>Tags</span>
+					<div class="rule-inspector-tags">
+						for _, tag := range item.Rule.Finding.Tags {
+							<span class="rule-inspector-badge">
+								{ tag }
+							</span>
+						}
+					</div>
+				</div>
+			}
+		</section>
+		<!-- Chain -->
+		<section class="rule-inspector-section">
+			<h5>Chain</h5>
+			if item.Rule.Chain != "" {
+				<div class="rule-inspector-field">
+					<span>Next Rule</span>
+					<strong>{ item.Rule.Chain }</strong>
+				</div>
+				if item.Rule.ChainedRule != nil {
+					<p class="rule-inspector-muted">
+						Chain reference resolved.
+					</p>
+				} else {
+					<p class="rule-inspector-muted">
+						Chain reference not resolved.
+					</p>
+				}
+			} else {
+				<p class="rule-inspector-muted">
+					No chained rule configured.
+				</p>
+			}
+		</section>
+	</div>
+}
+
+// RuleCondition displays an individual match condition.
+templ RuleCondition(index int, condition audit.MatchCondition) {
+	<div class="rule-condition">
+		<div class="rule-condition-header">
+			<strong>Condition { fmt.Sprint(index) }</strong>
+			if condition.Negated {
+				<span class="rule-condition-negated">
+					Negated
+				</span>
+			}
+		</div>
+		<div class="rule-inspector-field">
+			<span>Target</span>
+			<strong>{ string(condition.Target) }</strong>
+		</div>
+		if condition.Key != "" {
+			<div class="rule-inspector-field">
+				<span>Key</span>
+				<code>{ condition.Key }</code>
+			</div>
+		}
+		<div class="rule-inspector-field">
+			<span>Operator</span>
+			<strong>{ string(condition.Operator) }</strong>
+		</div>
+		if condition.Value != "" {
+			<div class="rule-inspector-block">
+				<span>Value</span>
+				<pre class="rule-condition-value">{ condition.Value }</pre>
+			</div>
+		}
+	</div>
+}

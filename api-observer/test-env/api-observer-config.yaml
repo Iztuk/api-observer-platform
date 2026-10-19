@@ -1,0 +1,11 @@
+app_log: logs/api-observer.log
+findings_log: logs/findings.jsonl
+rules: test-env/api-observer-rules.yaml
+ingest_address: :24899
+dashboard_port: :8080
+queue_size: 1000
+worker_count: 5
+nodes:
+    - id: 0b8bf0c0-60a5-4d36-84e0-5a3c2387a240
+      name: ModSecurity
+      addr: '[::1]:33458'

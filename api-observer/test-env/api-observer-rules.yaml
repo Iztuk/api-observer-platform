@@ -1,0 +1,235 @@
+rules:
+  juice-shop-sqli:
+    disabled: false
+    scope:
+      - request
+    description: Detect SQL injection attempts in query strings and request bodies.
+    match:
+      mode: any
+      conditions:
+        - target: query
+          operator: detect_sqli
+
+        - target: body
+          operator: detect_sqli
+    finding:
+      title: SQL Injection Attempt
+      message: A possible SQL injection payload was detected.
+      severity: critical
+      tags:
+        - attack-sqli
+        - juice-shop
+        - test-traffic
+
+  juice-shop-xss-query:
+    disabled: false
+    scope:
+      - request
+    description: Detect common reflected XSS payloads in query strings.
+    match:
+      mode: any
+      conditions:
+        - target: query
+          operator: regex
+          value: '(?i)<script\b|javascript:|onerror\s*=|onload\s*='
+    finding:
+      title: XSS Attempt in Query
+      message: A possible cross-site scripting payload was detected in the query string.
+      severity: high
+      tags:
+        - attack-xss
+        - juice-shop
+        - test-traffic
+
+  juice-shop-xss-body:
+    disabled: false
+    scope:
+      - request
+    description: Detect common XSS payloads in request bodies.
+    match:
+      mode: any
+      conditions:
+        - target: body
+          operator: regex
+          value: '(?i)<script\b|javascript:|onerror\s*=|onload\s*='
+    finding:
+      title: XSS Attempt in Request Body
+      message: A possible cross-site scripting payload was detected in the request body.
+      severity: high
+      tags:
+        - attack-xss
+        - juice-shop
+        - test-traffic
+
+  juice-shop-path-traversal:
+    disabled: false
+    scope:
+      - request
+    description: Detect directory traversal attempts.
+    match:
+      mode: any
+      conditions:
+        - target: path
+          operator: regex
+          value: '(?i)(?:\.\./){2,}'
+
+        - target: query
+          operator: regex
+          value: '(?i)(?:\.\./){2,}'
+    finding:
+      title: Path Traversal Attempt
+      message: A possible directory traversal attempt was detected.
+      severity: high
+      tags:
+        - attack-path-traversal
+        - juice-shop
+        - test-traffic
+
+  juice-shop-sensitive-file-access:
+    disabled: false
+    scope:
+      - request
+    description: Detect attempts to access sensitive Unix files.
+    match:
+      mode: any
+      conditions:
+        - target: path
+          operator: regex
+          value: "(?i)(?:/etc/passwd|/etc/shadow)"
+
+        - target: query
+          operator: regex
+          value: "(?i)(?:/etc/passwd|/etc/shadow)"
+    finding:
+      title: Sensitive File Access Attempt
+      message: A request attempted to reference a sensitive operating system file.
+      severity: high
+      tags:
+        - attack-lfi
+        - juice-shop
+        - test-traffic
+
+  juice-shop-command-injection:
+    disabled: false
+    scope:
+      - request
+    description: Detect command injection patterns used by the Juice Shop traffic generator.
+    match:
+      mode: any
+      conditions:
+        - target: query
+          operator: regex
+          value: '(?i)(?:;|\|\||&&)\s*(?:cat|id|whoami|uname|wget|curl)\b'
+
+        - target: body
+          operator: regex
+          value: '(?i)(?:;|\|\||&&)\s*(?:cat|id|whoami|uname|wget|curl)\b'
+    finding:
+      title: Command Injection Attempt
+      message: A possible operating system command injection payload was detected.
+      severity: critical
+      tags:
+        - attack-command-injection
+        - juice-shop
+        - test-traffic
+
+  juice-shop-jndi-injection:
+    disabled: false
+    scope:
+      - request
+    description: Detect JNDI lookup injection patterns.
+    match:
+      mode: any
+      conditions:
+        - target: query
+          operator: regex
+          value: '(?i)\$\{jndi:(?:ldap|ldaps|rmi|dns):'
+
+        - target: body
+          operator: regex
+          value: '(?i)\$\{jndi:(?:ldap|ldaps|rmi|dns):'
+
+        - target: header
+          key: User-Agent
+          operator: regex
+          value: '(?i)\$\{jndi:(?:ldap|ldaps|rmi|dns):'
+    finding:
+      title: JNDI Injection Attempt
+      message: A JNDI lookup injection payload was detected.
+      severity: critical
+      tags:
+        - attack-jndi
+        - attack-rce
+        - juice-shop
+        - test-traffic
+
+  juice-shop-sqlmap-user-agent:
+    disabled: false
+    scope:
+      - request
+    description: Detect requests identifying themselves as sqlmap.
+    match:
+      mode: all
+      conditions:
+        - target: header
+          key: User-Agent
+          operator: regex
+          value: '(?i)\bsqlmap(?:/|\b)'
+    finding:
+      title: SQLMap Client Detected
+      message: A request using a sqlmap User-Agent was detected.
+      severity: high
+      tags:
+        - scanner
+        - attack-sqli
+        - juice-shop
+        - test-traffic
+
+  juice-shop-forwarded-for-sqli:
+    disabled: false
+    scope:
+      - request
+    description: Detect SQL injection content supplied through X-Forwarded-For.
+    match:
+      mode: all
+      conditions:
+        - target: header
+          key: X-Forwarded-For
+          operator: detect_sqli
+    finding:
+      title: SQL Injection in X-Forwarded-For
+      message: A possible SQL injection payload was detected in the X-Forwarded-For header.
+      severity: critical
+      tags:
+        - attack-sqli
+        - malicious-header
+        - juice-shop
+        - test-traffic
+
+  juice-shop-login-sqli:
+    disabled: false
+    scope:
+      - request
+    description: Detect SQL injection specifically against the Juice Shop login endpoint.
+    match:
+      mode: all
+      conditions:
+        - target: path
+          operator: string_equal
+          value: /rest/user/login
+
+        - target: method
+          operator: string_equal
+          value: POST
+
+        - target: body
+          operator: detect_sqli
+    finding:
+      title: SQL Injection Against Login
+      message: A SQL injection attempt targeted the Juice Shop login endpoint.
+      severity: critical
+      tags:
+        - attack-sqli
+        - authentication
+        - juice-shop
+        - test-traffic

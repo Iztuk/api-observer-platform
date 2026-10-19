@@ -1,7 +1,0 @@
-app_log: logs/api-observer.log
-findings_log: logs/findings.jsonl
-rules: test-env/api-observer-rules.yaml
-ingest_port: :24899
-dashboard_port: :8080
-queue_size: 1000
-worker_count: 5
