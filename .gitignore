@@ -46,4 +46,4 @@ logs
 node_modules
 
 # Generated JS files
-internal/dashboard/views/assets/js/*
+api-observer/internal/dashboard/views/assets/js/*
