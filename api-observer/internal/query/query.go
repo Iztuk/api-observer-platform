@@ -3,7 +3,7 @@ package query
 
 import (
 	"api-observer/internal/audit"
-	queryv1 "api-observer/proto/query/v1"
+	ingestv1 "api-observer/proto/ingest/v1"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -13,7 +13,7 @@ import (
 type LogItems []LogItem
 
 type LogItem struct {
-	Log      *queryv1.Log
+	Log      *ingestv1.Record
 	Findings []audit.Finding
 	NodeName string
 }
@@ -43,7 +43,7 @@ func (items *LogItems) GetFindings(
 		}
 
 		switch event := item.Log.Event.(type) {
-		case *queryv1.Log_Request:
+		case *ingestv1.Record_Request:
 			if event.Request == nil ||
 				event.Request.Metadata == nil {
 
@@ -67,7 +67,7 @@ func (items *LogItems) GetFindings(
 				i,
 			)
 
-		case *queryv1.Log_Response:
+		case *ingestv1.Record_Response:
 			if event.Response == nil ||
 				event.Response.Metadata == nil {
 

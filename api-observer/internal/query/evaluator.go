@@ -1,12 +1,11 @@
 package query
 
 import (
+	ingestv1 "api-observer/proto/ingest/v1"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
-
-	queryv1 "api-observer/proto/query/v1"
 )
 
 func EvaluateExpression(
@@ -196,10 +195,10 @@ func evaluateTypeField(
 	var actual string
 
 	switch item.Log.Event.(type) {
-	case *queryv1.Log_Request:
+	case *ingestv1.Record_Request:
 		actual = "request"
 
-	case *queryv1.Log_Response:
+	case *ingestv1.Record_Response:
 		actual = "response"
 
 	default:
@@ -588,7 +587,7 @@ func evaluateTimestamp(
 	switch event :=
 		item.Log.Event.(type) {
 
-	case *queryv1.Log_Request:
+	case *ingestv1.Record_Request:
 		if event.Request == nil ||
 			event.Request.Metadata == nil ||
 			event.Request.Metadata.Timestamp == nil {
@@ -612,7 +611,7 @@ func evaluateTimestamp(
 				Timestamp.
 				AsTime()
 
-	case *queryv1.Log_Response:
+	case *ingestv1.Record_Response:
 		if event.Response == nil ||
 			event.Response.Metadata == nil ||
 			event.Response.Metadata.Timestamp == nil {

@@ -3,10 +3,8 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -14,34 +12,17 @@ import (
 
 	"api-observer/internal/audit"
 	"api-observer/internal/dashboard/views/explorer"
+	"api-observer/internal/log"
 	"api-observer/internal/nodes"
 	"api-observer/internal/query"
 	ingestv1 "api-observer/proto/ingest/v1"
-	queryv1 "api-observer/proto/query/v1"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
 	explorerDateTimeLayout = "2006-01-02T15:04"
 
-	explorerEvaluationBatchSize = 100
-	explorerSSEBatchSize        = 50
-
-	collectorQueryPort = "24900"
+	explorerSSEBatchSize = 50
 )
-
-type explorerParams struct {
-	Query string
-
-	Start time.Time
-	End   time.Time
-
-	StartString string
-	EndString   string
-}
 
 type explorerSSELog struct {
 	NodeID   string `json:"node_id"`
@@ -62,23 +43,15 @@ type explorerSSEError struct {
 	Message  string `json:"message"`
 }
 
-type collectorLogBatch struct {
-	NodeID   string
-	NodeName string
-
-	Logs query.LogItems
-
-	Done bool
-	Err  error
-}
-
 func (h *Handler) ExplorerPage(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	params, err := parseExplorerParams(
-		r,
-	)
+	params, err :=
+		parseExplorerParams(
+			r,
+		)
+
 	if err != nil {
 		http.Error(
 			w,
@@ -89,15 +62,17 @@ func (h *Handler) ExplorerPage(
 		return
 	}
 
-	if err := explorer.ExplorerPage(
-		"Explorer",
-		params.Query,
-		params.StartString,
-		params.EndString,
-	).Render(
-		r.Context(),
-		w,
-	); err != nil {
+	if err :=
+		explorer.ExplorerPage(
+			"Explorer",
+			params.Query,
+			params.StartString,
+			params.EndString,
+		).Render(
+			r.Context(),
+			w,
+		); err != nil {
+
 		http.Error(
 			w,
 			err.Error(),
@@ -112,9 +87,11 @@ func (h *Handler) ExplorerLogs(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	params, err := parseExplorerParams(
-		r,
-	)
+	params, err :=
+		parseExplorerParams(
+			r,
+		)
+
 	if err != nil {
 		http.Error(
 			w,
@@ -125,7 +102,9 @@ func (h *Handler) ExplorerLogs(
 		return
 	}
 
-	flusher, ok := w.(http.Flusher)
+	flusher, ok :=
+		w.(http.Flusher)
+
 	if !ok {
 		http.Error(
 			w,
@@ -136,9 +115,11 @@ func (h *Handler) ExplorerLogs(
 		return
 	}
 
-	queryExpression, err := query.ParseQuery(
-		params.Query,
-	)
+	queryExpression, err :=
+		query.ParseQuery(
+			params.Query,
+		)
+
 	if err != nil {
 		http.Error(
 			w,
@@ -155,6 +136,7 @@ func (h *Handler) ExplorerLogs(
 	)
 
 	for _, node := range h.Nodes.List() {
+
 		if !node.Connected() {
 			continue
 		}
@@ -197,19 +179,21 @@ func (h *Handler) ExplorerLogs(
 
 	flusher.Flush()
 
-	ctx, cancel := context.WithCancel(
-		r.Context(),
-	)
+	ctx, cancel :=
+		context.WithCancel(
+			r.Context(),
+		)
 	defer cancel()
 
 	batches := make(
-		chan collectorLogBatch,
+		chan log.StreamLogBatch,
 		len(targetNodes)*2,
 	)
 
 	var wg sync.WaitGroup
 
 	for _, node := range targetNodes {
+
 		wg.Add(1)
 
 		go func(
@@ -217,7 +201,7 @@ func (h *Handler) ExplorerLogs(
 		) {
 			defer wg.Done()
 
-			streamCollectorLogs(
+			log.StreamCollectorLogs(
 				ctx,
 				node,
 				params,
@@ -246,39 +230,48 @@ func (h *Handler) ExplorerLogs(
 		explorerSSEBatchSize,
 	)
 
-	flushSSEBatch := func() error {
-		if len(sseBatch) == 0 {
+	flushSSEBatch :=
+		func() error {
+			if len(sseBatch) == 0 {
+				return nil
+			}
+
+			if err :=
+				writeSSE(
+					w,
+					"logs",
+					sseBatch,
+				); err != nil {
+
+				return err
+			}
+
+			flusher.Flush()
+
+			sseBatch =
+				sseBatch[:0]
+
 			return nil
 		}
 
-		if err := writeSSE(
-			w,
-			"logs",
-			sseBatch,
-		); err != nil {
-			return err
-		}
-
-		flusher.Flush()
-
-		sseBatch = sseBatch[:0]
-
-		return nil
-	}
-
 	for batch := range batches {
+
 		if batch.Err != nil {
 			failedNodes++
 
-			if err := writeSSE(
-				w,
-				"node_error",
-				explorerSSEError{
-					NodeID:   batch.NodeID,
-					NodeName: batch.NodeName,
-					Message:  batch.Err.Error(),
-				},
-			); err != nil {
+			if err :=
+				writeSSE(
+					w,
+					"node_error",
+					explorerSSEError{
+						NodeID: batch.NodeID,
+
+						NodeName: batch.NodeName,
+
+						Message: batch.Err.Error(),
+					},
+				); err != nil {
+
 				return
 			}
 
@@ -290,14 +283,17 @@ func (h *Handler) ExplorerLogs(
 		if batch.Done {
 			completedNodes++
 
-			if err := writeSSE(
-				w,
-				"node_done",
-				map[string]string{
-					"node_id":   batch.NodeID,
-					"node_name": batch.NodeName,
-				},
-			); err != nil {
+			if err :=
+				writeSSE(
+					w,
+					"node_done",
+					map[string]string{
+						"node_id": batch.NodeID,
+
+						"node_name": batch.NodeName,
+					},
+				); err != nil {
+
 				return
 			}
 
@@ -310,27 +306,32 @@ func (h *Handler) ExplorerLogs(
 			continue
 		}
 
-		if err := batch.Logs.GetFindings(
-			ctx,
-			h.DB,
-			h.Config.FindingsLog,
-			batch.NodeID,
-			params.Start.UnixNano(),
-			params.End.UnixNano(),
-		); err != nil {
-			if err := writeSSE(
-				w,
-				"node_error",
-				explorerSSEError{
-					NodeID:   batch.NodeID,
-					NodeName: batch.NodeName,
-
-					Message: fmt.Sprintf(
-						"failed to retrieve findings: %v",
-						err,
-					),
-				},
+		if err :=
+			batch.Logs.GetFindings(
+				ctx,
+				h.DB,
+				h.Config.FindingsLog,
+				batch.NodeID,
+				params.Start.UnixNano(),
+				params.End.UnixNano(),
 			); err != nil {
+
+			if err :=
+				writeSSE(
+					w,
+					"node_error",
+					explorerSSEError{
+						NodeID: batch.NodeID,
+
+						NodeName: batch.NodeName,
+
+						Message: fmt.Sprintf(
+							"failed to retrieve findings: %v",
+							err,
+						),
+					},
+				); err != nil {
+
 				return
 			}
 
@@ -340,25 +341,31 @@ func (h *Handler) ExplorerLogs(
 		}
 
 		for _, item := range batch.Logs {
-			matches, err := query.EvaluateExpression(
-				params.Query,
-				queryExpression,
-				item,
-			)
-			if err != nil {
-				if err := writeSSE(
-					w,
-					"node_error",
-					explorerSSEError{
-						NodeID:   batch.NodeID,
-						NodeName: batch.NodeName,
 
-						Message: fmt.Sprintf(
-							"failed to evaluate query: %v",
-							err,
-						),
-					},
-				); err != nil {
+			matches, err :=
+				query.EvaluateExpression(
+					params.Query,
+					queryExpression,
+					item,
+				)
+
+			if err != nil {
+				if err :=
+					writeSSE(
+						w,
+						"node_error",
+						explorerSSEError{
+							NodeID: batch.NodeID,
+
+							NodeName: batch.NodeName,
+
+							Message: fmt.Sprintf(
+								"failed to evaluate query: %v",
+								err,
+							),
+						},
+					); err != nil {
+
 					return
 				}
 
@@ -371,18 +378,17 @@ func (h *Handler) ExplorerLogs(
 				continue
 			}
 
-			result, err := logItemToSSE(
-				item,
-			)
+			result, err :=
+				logItemToSSE(
+					item,
+				)
+
 			if err != nil {
 				continue
 			}
 
 			result.NodeID =
 				batch.NodeID
-
-			result.NodeName =
-				batch.NodeName
 
 			sseBatch = append(
 				sseBatch,
@@ -394,14 +400,18 @@ func (h *Handler) ExplorerLogs(
 			if len(sseBatch) >=
 				explorerSSEBatchSize {
 
-				if err := flushSSEBatch(); err != nil {
+				if err :=
+					flushSSEBatch(); err != nil {
+
 					return
 				}
 			}
 		}
 	}
 
-	if err := flushSSEBatch(); err != nil {
+	if err :=
+		flushSSEBatch(); err != nil {
+
 		return
 	}
 
@@ -409,271 +419,15 @@ func (h *Handler) ExplorerLogs(
 		w,
 		"done",
 		map[string]int{
-			"matches":         totalMatches,
+			"matches": totalMatches,
+
 			"completed_nodes": completedNodes,
-			"failed_nodes":    failedNodes,
+
+			"failed_nodes": failedNodes,
 		},
 	)
 
 	flusher.Flush()
-}
-
-func streamCollectorLogs(
-	ctx context.Context,
-	node *nodes.Node,
-	params explorerParams,
-	output chan<- collectorLogBatch,
-) {
-	queryAddress, err :=
-		collectorQueryAddress(
-			node,
-		)
-
-	if err != nil {
-		sendCollectorBatch(
-			ctx,
-			output,
-			collectorLogBatch{
-				NodeID:   node.ID,
-				NodeName: node.Name,
-				Err:      err,
-			},
-		)
-
-		return
-	}
-
-	conn, err := grpc.NewClient(
-		queryAddress,
-		grpc.WithTransportCredentials(
-			insecure.NewCredentials(),
-		),
-	)
-	if err != nil {
-		sendCollectorBatch(
-			ctx,
-			output,
-			collectorLogBatch{
-				NodeID:   node.ID,
-				NodeName: node.Name,
-
-				Err: fmt.Errorf(
-					"failed to connect to collector: %w",
-					err,
-				),
-			},
-		)
-
-		return
-	}
-	defer conn.Close()
-
-	client :=
-		ingestv1.NewIngestServiceClient(
-			conn,
-		)
-
-	stream, err := client.Logs(
-		ctx,
-		&ingestv1.LogRequest{
-			StartDate: timestamppb.New(
-				params.Start,
-			),
-
-			EndDate: timestamppb.New(
-				params.End,
-			),
-		},
-	)
-	if err != nil {
-		sendCollectorBatch(
-			ctx,
-			output,
-			collectorLogBatch{
-				NodeID:   node.ID,
-				NodeName: node.Name,
-
-				Err: fmt.Errorf(
-					"failed to start log stream: %w",
-					err,
-				),
-			},
-		)
-
-		return
-	}
-
-	logs := make(
-		query.LogItems,
-		0,
-		explorerEvaluationBatchSize,
-	)
-
-	flush := func() bool {
-		if len(logs) == 0 {
-			return true
-		}
-
-		batch := make(
-			query.LogItems,
-			len(logs),
-		)
-
-		copy(
-			batch,
-			logs,
-		)
-
-		if !sendCollectorBatch(
-			ctx,
-			output,
-			collectorLogBatch{
-				NodeID:   node.ID,
-				NodeName: node.Name,
-				Logs:     batch,
-			},
-		) {
-			return false
-		}
-
-		logs = logs[:0]
-
-		return true
-	}
-
-	for {
-		transaction, err :=
-			stream.Recv()
-
-		if errors.Is(
-			err,
-			io.EOF,
-		) {
-			if !flush() {
-				return
-			}
-
-			sendCollectorBatch(
-				ctx,
-				output,
-				collectorLogBatch{
-					NodeID:   node.ID,
-					NodeName: node.Name,
-					Done:     true,
-				},
-			)
-
-			return
-		}
-
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-
-			sendCollectorBatch(
-				ctx,
-				output,
-				collectorLogBatch{
-					NodeID:   node.ID,
-					NodeName: node.Name,
-
-					Err: fmt.Errorf(
-						"log stream failed: %w",
-						err,
-					),
-				},
-			)
-
-			return
-		}
-
-		if transaction == nil {
-			continue
-		}
-
-		if transaction.Request != nil {
-			logs = append(
-				logs,
-				query.LogItem{
-					Log: requestToQueryLog(
-						transaction.Request,
-					),
-					NodeName: node.Name,
-				},
-			)
-		}
-
-		if transaction.Response != nil {
-			logs = append(
-				logs,
-				query.LogItem{
-					Log: responseToQueryLog(
-						transaction.Response,
-					),
-					NodeName: node.Name,
-				},
-			)
-		}
-
-		if len(logs) >=
-			explorerEvaluationBatchSize {
-
-			if !flush() {
-				return
-			}
-		}
-	}
-}
-
-func sendCollectorBatch(
-	ctx context.Context,
-	output chan<- collectorLogBatch,
-	batch collectorLogBatch,
-) bool {
-	select {
-	case output <- batch:
-		return true
-
-	case <-ctx.Done():
-		return false
-	}
-}
-
-func collectorQueryAddress(
-	node *nodes.Node,
-) (string, error) {
-	if node == nil {
-		return "",
-			fmt.Errorf(
-				"node is nil",
-			)
-	}
-
-	if node.Addr == "" {
-		return "",
-			fmt.Errorf(
-				"node %q does not have an address",
-				node.ID,
-			)
-	}
-
-	host, _, err := net.SplitHostPort(
-		node.Addr,
-	)
-	if err != nil {
-		return "",
-			fmt.Errorf(
-				"invalid node address %q: %w",
-				node.Addr,
-				err,
-			)
-	}
-
-	return net.JoinHostPort(
-		host,
-		collectorQueryPort,
-	), nil
 }
 
 func writeSSE(
@@ -681,19 +435,23 @@ func writeSSE(
 	event string,
 	value any,
 ) error {
-	data, err := json.Marshal(
-		value,
-	)
+	data, err :=
+		json.Marshal(
+			value,
+		)
+
 	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(
-		w,
-		"event: %s\ndata: %s\n\n",
-		event,
-		data,
-	); err != nil {
+	if _, err :=
+		fmt.Fprintf(
+			w,
+			"event: %s\ndata: %s\n\n",
+			event,
+			data,
+		); err != nil {
+
 		return err
 	}
 
@@ -713,7 +471,7 @@ func logItemToSSE(
 	switch event :=
 		item.Log.Event.(type) {
 
-	case *queryv1.Log_Request:
+	case *ingestv1.Record_Request:
 		if event.Request == nil {
 			return explorerSSELog{},
 				fmt.Errorf(
@@ -721,16 +479,21 @@ func logItemToSSE(
 				)
 		}
 
-		result := explorerSSELog{
-			Type:   "Request",
-			Method: event.Request.Method,
-			Path:   event.Request.Url,
+		result :=
+			explorerSSELog{
+				NodeName: item.NodeName,
 
-			Findings: append(
-				[]audit.Finding(nil),
-				item.Findings...,
-			),
-		}
+				Type: "Request",
+
+				Method: event.Request.Method,
+
+				Path: event.Request.Url,
+
+				Findings: append(
+					[]audit.Finding(nil),
+					item.Findings...,
+				),
+			}
 
 		if event.Request.Metadata != nil &&
 			event.Request.Metadata.Timestamp != nil {
@@ -746,7 +509,7 @@ func logItemToSSE(
 
 		return result, nil
 
-	case *queryv1.Log_Response:
+	case *ingestv1.Record_Response:
 		if event.Response == nil {
 			return explorerSSELog{},
 				fmt.Errorf(
@@ -754,15 +517,19 @@ func logItemToSSE(
 				)
 		}
 
-		result := explorerSSELog{
-			Type:   "Response",
-			Status: event.Response.StatusCode,
+		result :=
+			explorerSSELog{
+				NodeName: item.NodeName,
 
-			Findings: append(
-				[]audit.Finding(nil),
-				item.Findings...,
-			),
-		}
+				Type: "Response",
+
+				Status: event.Response.StatusCode,
+
+				Findings: append(
+					[]audit.Finding(nil),
+					item.Findings...,
+				),
+			}
 
 		if event.Response.Metadata != nil &&
 			event.Response.Metadata.Timestamp != nil {
@@ -777,6 +544,7 @@ func logItemToSSE(
 		}
 
 		return result, nil
+
 	default:
 		return explorerSSELog{},
 			fmt.Errorf(
@@ -786,144 +554,54 @@ func logItemToSSE(
 	}
 }
 
-func requestToQueryLog(
-	request *ingestv1.Request,
-) *queryv1.Log {
-	if request == nil {
-		return nil
-	}
-
-	result := &queryv1.Request{
-		Method: request.Method,
-		Url:    request.Url,
-
-		Headers: convertIngestHeaders(
-			request.Headers,
-		),
-
-		Body:          request.Body,
-		ContentLength: request.ContentLength,
-	}
-
-	if request.Metadata != nil {
-		result.Metadata = &queryv1.Metadata{
-			RequestId: request.Metadata.RequestId,
-
-			Source: request.Metadata.Source,
-
-			Timestamp: request.Metadata.Timestamp,
-		}
-	}
-
-	return &queryv1.Log{
-		Event: &queryv1.Log_Request{
-			Request: result,
-		},
-	}
-}
-
-func responseToQueryLog(
-	response *ingestv1.Response,
-) *queryv1.Log {
-	if response == nil {
-		return nil
-	}
-
-	result := &queryv1.Response{
-		StatusCode: response.StatusCode,
-
-		Headers: convertIngestHeaders(
-			response.Headers,
-		),
-
-		Body: response.Body,
-
-		ContentLength: response.ContentLength,
-	}
-
-	if response.Metadata != nil {
-		result.Metadata = &queryv1.Metadata{
-			RequestId: response.Metadata.RequestId,
-
-			Source: response.Metadata.Source,
-
-			Timestamp: response.Metadata.Timestamp,
-		}
-	}
-
-	return &queryv1.Log{
-		Event: &queryv1.Log_Response{
-			Response: result,
-		},
-	}
-}
-
-func convertIngestHeaders(
-	headers map[string]*ingestv1.HeaderValues,
-) map[string]*queryv1.HeaderValues {
-	result := make(
-		map[string]*queryv1.HeaderValues,
-		len(headers),
-	)
-
-	for name, value := range headers {
-		if value == nil {
-			continue
-		}
-
-		result[name] =
-			&queryv1.HeaderValues{
-				Values: append(
-					[]string(nil),
-					value.Values...,
-				),
-			}
-	}
-
-	return result
-}
-
 func parseExplorerParams(
 	r *http.Request,
-) (explorerParams, error) {
-	queries := r.URL.Query()
+) (log.StreamParams, error) {
+	queries :=
+		r.URL.Query()
 
-	params := explorerParams{
-		Query: queries.Get(
-			"query",
-		),
+	params :=
+		log.StreamParams{
+			Query: queries.Get(
+				"query",
+			),
 
-		StartString: queries.Get(
-			"start",
-		),
+			StartString: queries.Get(
+				"start",
+			),
 
-		EndString: queries.Get(
-			"end",
-		),
-	}
+			EndString: queries.Get(
+				"end",
+			),
+		}
 
-	now := time.Now()
+	now :=
+		time.Now()
 
 	if params.EndString == "" {
-		params.End = now
+		params.End =
+			now
 
 		params.EndString =
 			params.End.Format(
 				explorerDateTimeLayout,
 			)
 	} else {
-		end, err := parseExplorerTime(
-			params.EndString,
-		)
+		end, err :=
+			parseExplorerTime(
+				params.EndString,
+			)
+
 		if err != nil {
-			return explorerParams{},
+			return log.StreamParams{},
 				fmt.Errorf(
 					"invalid end time: %w",
 					err,
 				)
 		}
 
-		params.End = end
+		params.End =
+			end
 	}
 
 	if params.StartString == "" {
@@ -937,24 +615,27 @@ func parseExplorerParams(
 				explorerDateTimeLayout,
 			)
 	} else {
-		start, err := parseExplorerTime(
-			params.StartString,
-		)
+		start, err :=
+			parseExplorerTime(
+				params.StartString,
+			)
+
 		if err != nil {
-			return explorerParams{},
+			return log.StreamParams{},
 				fmt.Errorf(
 					"invalid start time: %w",
 					err,
 				)
 		}
 
-		params.Start = start
+		params.Start =
+			start
 	}
 
 	if params.End.Before(
 		params.Start,
 	) {
-		return explorerParams{},
+		return log.StreamParams{},
 			fmt.Errorf(
 				"end time must be after start time",
 			)
@@ -966,18 +647,22 @@ func parseExplorerParams(
 func parseExplorerTime(
 	value string,
 ) (time.Time, error) {
-	if parsed, err := time.Parse(
-		time.RFC3339,
-		value,
-	); err == nil {
+	if parsed, err :=
+		time.Parse(
+			time.RFC3339,
+			value,
+		); err == nil {
+
 		return parsed, nil
 	}
 
-	parsed, err := time.ParseInLocation(
-		explorerDateTimeLayout,
-		value,
-		time.Local,
-	)
+	parsed, err :=
+		time.ParseInLocation(
+			explorerDateTimeLayout,
+			value,
+			time.Local,
+		)
+
 	if err != nil {
 		return time.Time{},
 			fmt.Errorf(
@@ -991,7 +676,7 @@ func parseExplorerTime(
 }
 
 func logToJob(
-	logRecord *queryv1.Log,
+	logRecord *ingestv1.Record,
 ) (audit.Job, error) {
 	if logRecord == nil {
 		return audit.Job{},
@@ -1000,8 +685,10 @@ func logToJob(
 			)
 	}
 
-	switch event := logRecord.Event.(type) {
-	case *queryv1.Log_Request:
+	switch event :=
+		logRecord.Event.(type) {
+
+	case *ingestv1.Record_Request:
 		if event.Request == nil {
 			return audit.Job{},
 				fmt.Errorf(
@@ -1009,11 +696,14 @@ func logToJob(
 				)
 		}
 
-		request := event.Request
+		request :=
+			event.Request
 
-		requestURL, err := url.Parse(
-			request.Url,
-		)
+		requestURL, err :=
+			url.Parse(
+				request.Url,
+			)
+
 		if err != nil {
 			return audit.Job{},
 				fmt.Errorf(
@@ -1022,20 +712,24 @@ func logToJob(
 				)
 		}
 
-		job := audit.Job{
-			Request: &audit.RequestJob{
-				Method: request.Method,
-				URL:    requestURL,
+		job :=
+			audit.Job{
+				Type: audit.JobTypeRequest,
 
-				Headers: toHTTPHeader(
-					request.Headers,
-				),
+				Request: &audit.RequestJob{
+					Method: request.Method,
 
-				Body: request.Body,
+					URL: requestURL,
 
-				ContentLength: request.ContentLength,
-			},
-		}
+					Headers: toHTTPHeader(
+						request.Headers,
+					),
+
+					Body: request.Body,
+
+					ContentLength: request.ContentLength,
+				},
+			}
 
 		if request.Metadata != nil {
 			job.Request.Metadata =
@@ -1056,7 +750,7 @@ func logToJob(
 
 		return job, nil
 
-	case *queryv1.Log_Response:
+	case *ingestv1.Record_Response:
 		if event.Response == nil {
 			return audit.Job{},
 				fmt.Errorf(
@@ -1064,23 +758,27 @@ func logToJob(
 				)
 		}
 
-		response := event.Response
+		response :=
+			event.Response
 
-		job := audit.Job{
-			Response: &audit.ResponseJob{
-				StatusCode: int(
-					response.StatusCode,
-				),
+		job :=
+			audit.Job{
+				Type: audit.JobTypeResponse,
 
-				Headers: toHTTPHeader(
-					response.Headers,
-				),
+				Response: &audit.ResponseJob{
+					StatusCode: int(
+						response.StatusCode,
+					),
 
-				Body: response.Body,
+					Headers: toHTTPHeader(
+						response.Headers,
+					),
 
-				ContentLength: response.ContentLength,
-			},
-		}
+					Body: response.Body,
+
+					ContentLength: response.ContentLength,
+				},
+			}
 
 		if response.Metadata != nil {
 			job.Response.Metadata =
@@ -1100,29 +798,33 @@ func logToJob(
 		}
 
 		return job, nil
-	}
 
-	return audit.Job{},
-		fmt.Errorf(
-			"unsupported log event type %T",
-			logRecord.Event,
-		)
+	default:
+		return audit.Job{},
+			fmt.Errorf(
+				"unsupported log event type %T",
+				logRecord.Event,
+			)
+	}
 }
 
 func toHTTPHeader(
-	headers map[string]*queryv1.HeaderValues,
+	headers map[string]*ingestv1.HeaderValues,
 ) http.Header {
-	result := http.Header{}
+	result :=
+		http.Header{}
 
 	for key, value := range headers {
+
 		if value == nil {
 			continue
 		}
 
-		result[key] = append(
-			[]string(nil),
-			value.Values...,
-		)
+		result[key] =
+			append(
+				[]string(nil),
+				value.Values...,
+			)
 	}
 
 	return result

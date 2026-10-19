@@ -57,6 +57,16 @@ func (h *Handler) RegisterRoutes(
 	)
 
 	mux.HandleFunc(
+		"GET /analysis",
+		h.AnalysisPage,
+	)
+
+	mux.HandleFunc(
+		"POST /analysis/logs",
+		h.AnalysisLogs,
+	)
+
+	mux.HandleFunc(
 		"GET /rules",
 		h.RulesPage,
 	)
@@ -67,7 +77,7 @@ func (h *Handler) RegisterRoutes(
 	)
 
 	mux.HandleFunc(
-		"GET /rules/import/translate",
+		"POST /rules/import/translate",
 		h.RulesImportTranslate,
 	)
 
