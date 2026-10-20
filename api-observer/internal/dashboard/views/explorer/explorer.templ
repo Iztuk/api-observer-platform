@@ -484,12 +484,18 @@ templ ExplorerStreamScript() {
 
 			source.onerror = () => {
 				if (source.readyState === EventSource.CLOSED) {
+					updateStatus("Explorer stream closed.");
+
 					return;
 				}
 
-				updateStatus("Explorer stream disconnected.");
+				if (source.readyState === EventSource.CONNECTING) {
+					updateStatus("Explorer stream disconnected — reconnecting...");
 
-				source.close();
+					return;
+				}
+
+				updateStatus("Explorer stream connection error.");
 			};
 
 			window.addEventListener("beforeunload", () => {
