@@ -3,6 +3,9 @@ services:
     image: bkimminich/juice-shop:latest
     restart: unless-stopped
 
+    networks:
+      - api-observer-test
+
   modsecurity:
     image: docker.io/owasp/modsecurity-crs:nginx
     restart: unless-stopped
@@ -29,3 +32,36 @@ services:
 
     volumes:
       - ./logs:/var/log/modsecurity
+
+    networks:
+      - api-observer-test
+
+  collector:
+    image: localhost/api-observer-collector:dev
+    restart: unless-stopped
+
+    depends_on:
+      - modsecurity
+
+    command:
+      - start
+      - --background=false
+      - --file-path=/logs/modsec_audit.log
+      - --observer-ingest-addr=host.containers.internal:24899
+      - --query-addr=:24900
+
+    ports:
+      - "24900:24900"
+
+    volumes:
+      - ./logs:/logs:ro
+      - collector-data:/var/lib/api-observer-collector
+
+    networks:
+      - api-observer-test
+
+volumes:
+  collector-data:
+
+networks:
+  api-observer-test:

@@ -9,3 +9,9 @@ nodes:
     - id: 0b8bf0c0-60a5-4d36-84e0-5a3c2387a240
       name: ModSecurity
       addr: '[::1]:33458'
+    - id: 14bd9ef7-2fb5-44f1-94c3-a40aec307b7e
+      name: 14bd9ef7-2fb5-44f1-94c3-a40aec307b7e
+      addr: 172.20.1.160:40474
+    - id: 7be268ca-0efd-4d00-8ae7-63925a608a82
+      name: 7be268ca-0efd-4d00-8ae7-63925a608a82
+      addr: 172.20.1.160:43476
