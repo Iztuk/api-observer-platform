@@ -80,7 +80,8 @@ func (m *NodeManager) Exists(
 }
 
 func (m *NodeManager) Add(
-	nodeID string,
+	nodeID,
+	queryAddr string,
 	addr string,
 ) error {
 	nodeID =
@@ -312,13 +313,17 @@ func (m *NodeManager) SetName(
 }
 
 func (m *NodeManager) Heartbeat(
-	nodeID string,
+	nodeID,
+	queryAddr string,
 	receivedAt time.Time,
 ) error {
-	nodeID =
-		strings.TrimSpace(
-			nodeID,
-		)
+	nodeID = strings.TrimSpace(
+		nodeID,
+	)
+
+	queryAddr = strings.TrimSpace(
+		queryAddr,
+	)
 
 	if nodeID == "" {
 		return fmt.Errorf(
@@ -326,43 +331,124 @@ func (m *NodeManager) Heartbeat(
 		)
 	}
 
+	if queryAddr == "" {
+		return fmt.Errorf(
+			"node query address is required",
+		)
+	}
+
 	if receivedAt.IsZero() {
-		receivedAt =
-			time.Now()
+		receivedAt = time.Now()
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	node, ok :=
-		m.nodes[nodeID]
+	node, ok := m.nodes[nodeID]
 
 	if !ok {
-		name :=
-			nodeID
+		name := nodeID
 
 		if m.config != nil {
-			name =
-				m.config.NodeName(
-					nodeID,
-				)
+			if configuredName := m.config.NodeName(
+				nodeID,
+			); configuredName != "" {
+				name = configuredName
+			}
 		}
 
-		node =
-			&Node{
-				ID:   nodeID,
-				Name: name,
+		node = &Node{
+			ID:   nodeID,
+			Name: name,
+			Addr: queryAddr,
+		}
+
+		m.nodes[nodeID] = node
+
+		if m.config != nil {
+			if err := m.config.UpsertNode(
+				nodeID,
+				queryAddr,
+			); err != nil {
+				delete(
+					m.nodes,
+					nodeID,
+				)
+
+				return fmt.Errorf(
+					"failed to add node configuration: %w",
+					err,
+				)
 			}
 
-		m.nodes[nodeID] =
-			node
+			if err := config.SaveConfigurationFile(
+				m.config,
+			); err != nil {
+				delete(
+					m.nodes,
+					nodeID,
+				)
+
+				_ = m.config.RemoveNode(
+					nodeID,
+				)
+
+				return fmt.Errorf(
+					"failed to persist node configuration: %w",
+					err,
+				)
+			}
+		}
 	}
 
-	wasConnected :=
-		node.Connected()
+	wasConnected := node.Connected()
 
-	node.LastSeen =
-		receivedAt
+	if node.Addr != queryAddr {
+		oldAddr := node.Addr
+
+		node.Addr = queryAddr
+
+		if m.config != nil {
+			if err := m.config.UpsertNode(
+				nodeID,
+				queryAddr,
+			); err != nil {
+				node.Addr = oldAddr
+
+				return fmt.Errorf(
+					"failed to update node query address: %w",
+					err,
+				)
+			}
+
+			if err := config.SaveConfigurationFile(
+				m.config,
+			); err != nil {
+				node.Addr = oldAddr
+
+				_ = m.config.UpsertNode(
+					nodeID,
+					oldAddr,
+				)
+
+				return fmt.Errorf(
+					"failed to persist node query address: %w",
+					err,
+				)
+			}
+		}
+
+		if m.appLogger != nil {
+			m.appLogger.Printf(
+				"collector %q query address changed from %q to %q",
+				nodeID,
+				oldAddr,
+				queryAddr,
+			)
+		}
+	}
+
+	node.LastSeen = receivedAt
 
 	if !wasConnected &&
 		m.appLogger != nil {

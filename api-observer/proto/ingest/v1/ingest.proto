@@ -21,7 +21,8 @@ message Record {
 
 message Heartbeat {
   string collector_id = 1;
-  google.protobuf.Timestamp timestamp = 2;
+  string query_addr = 2;
+  google.protobuf.Timestamp timestamp = 3;
 }
 
 message Metadata {

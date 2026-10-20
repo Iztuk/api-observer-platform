@@ -46,16 +46,18 @@ services:
     command:
       - start
       - --background=false
+      - --data-dir=/var/log
       - --file-path=/logs/modsec_audit.log
       - --observer-ingest-addr=host.containers.internal:24899
       - --query-addr=:24900
+      - --advertise-query-addr=127.0.0.1:24900
 
     ports:
       - "24900:24900"
 
     volumes:
       - ./logs:/logs:ro
-      - collector-data:/var/lib/api-observer-collector
+      - collector-data:/var/lib/api-collector
 
     networks:
       - api-observer-test
