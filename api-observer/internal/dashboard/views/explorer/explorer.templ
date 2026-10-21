@@ -77,6 +77,7 @@ templ ExplorerPageContent(
 					</span>
 				</button>
 			</div>
+
 			<details class="explorer-advanced">
 				<summary>
 					<span>
@@ -97,6 +98,7 @@ templ ExplorerPageContent(
 						<path d="m6 9 6 6 6-6"></path>
 					</svg>
 				</summary>
+
 				<div class="explorer-filters">
 					<div class="explorer-filter">
 						<label for="explorer-start">
@@ -109,6 +111,7 @@ templ ExplorerPageContent(
 							value={ start }
 						/>
 					</div>
+
 					<div class="explorer-filter">
 						<label for="explorer-end">
 							End Date
@@ -123,6 +126,7 @@ templ ExplorerPageContent(
 				</div>
 			</details>
 		</form>
+
 		<section class="explorer-results">
 			<div
 				id="explorer-stream-status"
@@ -130,7 +134,11 @@ templ ExplorerPageContent(
 			>
 				Connecting...
 			</div>
-			<div class="explorer-table-container">
+
+			<div
+				id="explorer-table-container"
+				class="explorer-table-container"
+			>
 				<table class="explorer-table">
 					<thead>
 						<tr>
@@ -144,6 +152,7 @@ templ ExplorerPageContent(
 							<th>Findings</th>
 						</tr>
 					</thead>
+
 					<tbody id="explorer-log-body">
 						<tr id="explorer-empty-row">
 							<td
@@ -163,344 +172,1072 @@ templ ExplorerPageContent(
 templ ExplorerStreamScript() {
 	<script>
 		(() => {
-			const form = document.getElementById("explorer-form");
+			const form =
+				document.getElementById(
+					"explorer-form",
+				);
 
-			const body = document.getElementById("explorer-log-body");
+			const body =
+				document.getElementById(
+					"explorer-log-body",
+				);
 
-			const statusElement = document.getElementById("explorer-stream-status");
+			const container =
+				document.getElementById(
+					"explorer-table-container",
+				);
 
-			if (!form || !body) {
+			const statusElement =
+				document.getElementById(
+					"explorer-stream-status",
+				);
+
+			if (
+				!form ||
+				!body ||
+				!container
+			) {
 				return;
 			}
 
-			const params = new URLSearchParams(new FormData(form));
+			const params =
+				new URLSearchParams(
+					new FormData(
+						form,
+					),
+				);
 
-			const source = new EventSource("/logs?" + params.toString());
+			const source =
+				new EventSource(
+					"/logs?" +
+						params.toString(),
+				);
 
-			let rowCount = 0;
+			/*
+			 * Keep synchronized with explorer.css.
+			 */
+			const rowHeight = 48;
+
+			/*
+			 * Number of rows rendered above and below
+			 * the visible viewport.
+			 */
+			const overscan = 20;
+
+			/*
+			 * Complete result set.
+			 *
+			 * Only the visible portion of this array is
+			 * represented in the DOM.
+			 */
+			const logs = [];
+
+			/*
+			 * Expanded state is stored independently of
+			 * the DOM so it survives virtual scrolling.
+			 */
+			const expandedRows =
+				new Set();
+
 			let completedNodes = 0;
 			let failedNodes = 0;
 
-			const removeEmptyRow = () => {
-				const empty = document.getElementById("explorer-empty-row");
+			let renderPending =
+				false;
 
-				if (empty) {
-					empty.remove();
+			/*
+			 * Tracks the virtual range currently represented
+			 * by real DOM elements.
+			 *
+			 * This prevents streamed batches from recreating
+			 * visible rows if the window hasn't changed.
+			 */
+			let renderedStart = -1;
+			let renderedEnd = -1;
+
+			const updateStatus = (
+				message,
+			) => {
+				if (!statusElement) {
+					return;
 				}
+
+				statusElement.textContent =
+					message;
 			};
 
-			const createCell = (value) => {
-				const cell = document.createElement("td");
+			const createCell = (
+				value,
+			) => {
+				const cell =
+					document.createElement(
+						"td",
+					);
 
-				if (value !== undefined && value !== null) {
-					cell.textContent = String(value);
+				if (
+					value !== undefined &&
+					value !== null
+				) {
+					const text =
+						String(
+							value,
+						);
+
+					cell.textContent =
+						text;
+
+					/*
+					 * Native browser tooltip allows
+					 * truncated values to be viewed
+					 * without changing row height.
+					 */
+					cell.title =
+						text;
 				}
 
 				return cell;
 			};
 
-			const createDetailField = (label, value) => {
-				const field = document.createElement("div");
+			const createDetailField = (
+				label,
+				value,
+			) => {
+				const field =
+					document.createElement(
+						"div",
+					);
 
-				field.className = "explorer-detail-field";
+				field.className =
+					"explorer-detail-field";
 
-				const labelElement = document.createElement("span");
+				const labelElement =
+					document.createElement(
+						"span",
+					);
 
-				labelElement.className = "explorer-detail-label";
+				labelElement.className =
+					"explorer-detail-label";
 
-				labelElement.textContent = label;
+				labelElement.textContent =
+					label;
 
-				const valueElement = document.createElement("span");
+				const valueElement =
+					document.createElement(
+						"span",
+					);
 
-				valueElement.className = "explorer-detail-value";
+				valueElement.className =
+					"explorer-detail-value";
 
-				valueElement.textContent = value ?? "";
+				valueElement.textContent =
+					value ?? "";
 
-				field.append(labelElement, valueElement);
+				field.append(
+					labelElement,
+					valueElement,
+				);
 
 				return field;
 			};
 
-			const createFinding = (finding) => {
-				const findingElement = document.createElement("div");
+			const createFinding = (
+				finding,
+			) => {
+				const findingElement =
+					document.createElement(
+						"div",
+					);
 
-				findingElement.className = "explorer-finding";
+				findingElement.className =
+					"explorer-finding";
 
 				if (finding.severity) {
-					findingElement.dataset.severity = finding.severity;
+					findingElement.dataset.severity =
+						finding.severity;
 				}
 
-				const fields = document.createElement("div");
+				const fields =
+					document.createElement(
+						"div",
+					);
 
-				fields.className = "explorer-finding-fields";
+				fields.className =
+					"explorer-finding-fields";
 
 				fields.append(
-					createDetailField("Title", finding.title || "Finding"),
+					createDetailField(
+						"Title",
+						finding.title ||
+							"Finding",
+					),
 
-					createDetailField("Severity", finding.severity || "Unknown"),
+					createDetailField(
+						"Severity",
+						finding.severity ||
+							"Unknown",
+					),
 
-					createDetailField("Message", finding.message || ""),
+					createDetailField(
+						"Message",
+						finding.message ||
+							"",
+					),
 				);
 
-				if (Array.isArray(finding.tags) && finding.tags.length > 0) {
-					fields.append(createDetailField("Tags", finding.tags.join(", ")));
+				if (
+					Array.isArray(
+						finding.tags,
+					) &&
+					finding.tags.length >
+						0
+				) {
+					fields.append(
+						createDetailField(
+							"Tags",
+							finding.tags.join(
+								", ",
+							),
+						),
+					);
 				}
 
-				findingElement.append(fields);
+				findingElement.append(
+					fields,
+				);
 
 				return findingElement;
 			};
 
-			const createDetailsRow = (log) => {
-				const detailsRow = document.createElement("tr");
+			const createDetailsRow = (
+				log,
+			) => {
+				const detailsRow =
+					document.createElement(
+						"tr",
+					);
 
-				detailsRow.className = "explorer-log-details-row";
+				detailsRow.className =
+					"explorer-log-details-row";
 
-				detailsRow.hidden = true;
-
-				const cell = document.createElement("td");
+				const cell =
+					document.createElement(
+						"td",
+					);
 
 				cell.colSpan = 8;
 
-				const details = document.createElement("div");
+				const details =
+					document.createElement(
+						"div",
+					);
 
-				details.className = "explorer-log-details";
+				details.className =
+					"explorer-log-details";
 
-				const findings = Array.isArray(log.findings) ? log.findings : [];
+				const findings =
+					Array.isArray(
+						log.findings,
+					)
+						? log.findings
+						: [];
 
-				const findingsSection = document.createElement("div");
+				const findingsSection =
+					document.createElement(
+						"div",
+					);
 
-				findingsSection.className = "explorer-findings";
+				findingsSection.className =
+					"explorer-findings";
 
-				const title = document.createElement("div");
+				const title =
+					document.createElement(
+						"div",
+					);
 
-				title.className = "explorer-findings-title";
+				title.className =
+					"explorer-findings-title";
 
-				title.textContent = "Findings (" + findings.length + ")";
+				title.textContent =
+					"Findings (" +
+					findings.length +
+					")";
 
-				findingsSection.append(title);
+				findingsSection.append(
+					title,
+				);
 
-				if (findings.length === 0) {
-					const empty = document.createElement("div");
+				if (
+					findings.length === 0
+				) {
+					const empty =
+						document.createElement(
+							"div",
+						);
 
-					empty.className = "explorer-findings-empty";
+					empty.className =
+						"explorer-findings-empty";
 
-					empty.textContent = "No findings for this log.";
+					empty.textContent =
+						"No findings for this log.";
 
-					findingsSection.append(empty);
+					findingsSection.append(
+						empty,
+					);
 				} else {
-					for (const finding of findings) {
-						findingsSection.append(createFinding(finding));
+					for (
+						const finding of
+							findings
+					) {
+						findingsSection.append(
+							createFinding(
+								finding,
+							),
+						);
 					}
 				}
 
-				details.append(findingsSection);
+				details.append(
+					findingsSection,
+				);
 
-				cell.append(details);
+				cell.append(
+					details,
+				);
 
-				detailsRow.append(cell);
+				detailsRow.append(
+					cell,
+				);
 
 				return detailsRow;
 			};
 
-			const appendRow = (log) => {
-				removeEmptyRow();
+			const createSpacerRow = (
+				height,
+			) => {
+				const row =
+					document.createElement(
+						"tr",
+					);
 
-				const findings = Array.isArray(log.findings) ? log.findings : [];
+				row.className =
+					"explorer-spacer-row";
 
-				const row = document.createElement("tr");
+				const cell =
+					document.createElement(
+						"td",
+					);
 
-				row.className = "explorer-log-row";
+				cell.colSpan = 8;
+
+				cell.style.height =
+					Math.max(
+						0,
+						height,
+					) + "px";
+
+				row.append(
+					cell,
+				);
+
+				return row;
+			};
+
+			const createLogRow = (
+				log,
+				index,
+			) => {
+				const findings =
+					Array.isArray(
+						log.findings,
+					)
+						? log.findings
+						: [];
+
+				const expanded =
+					expandedRows.has(
+						index,
+					);
+
+				const row =
+					document.createElement(
+						"tr",
+					);
+
+				row.className =
+					"explorer-log-row";
+
+				row.dataset.index =
+					String(
+						index,
+					);
 
 				row.tabIndex = 0;
 
-				row.setAttribute("role", "button");
+				row.setAttribute(
+					"role",
+					"button",
+				);
 
-				row.setAttribute("aria-expanded", "false");
+				row.setAttribute(
+					"aria-expanded",
+					expanded
+						? "true"
+						: "false",
+				);
 
-				const timestamp = log.timestamp
-					? new Date(log.timestamp).toLocaleString()
-					: "";
+				const timestamp =
+					log.timestamp
+						? new Date(
+								log.timestamp,
+							).
+								toLocaleString()
+						: "";
 
-				const toggleCell = document.createElement("td");
+				const toggleCell =
+					document.createElement(
+						"td",
+					);
 
-				toggleCell.className = "explorer-toggle-cell";
+				toggleCell.className =
+					"explorer-toggle-cell";
 
-				const toggle = document.createElement("span");
+				const toggle =
+					document.createElement(
+						"span",
+					);
 
-				toggle.className = "explorer-row-toggle";
+				toggle.className =
+					"explorer-row-toggle";
 
-				toggle.textContent = "›";
+				toggle.textContent =
+					expanded
+						? "⌄"
+						: "›";
 
-				toggleCell.append(toggle);
+				toggleCell.append(
+					toggle,
+				);
 
 				row.append(
 					toggleCell,
 
-					createCell(timestamp),
+					createCell(
+						timestamp,
+					),
 
-					createCell(log.node_name || ""),
+					createCell(
+						log.node_name ||
+							"",
+					),
 
-					createCell(log.type || ""),
+					createCell(
+						log.type ||
+							"",
+					),
 
-					createCell(log.method || ""),
+					createCell(
+						log.method ||
+							"",
+					),
 
-					createCell(log.path || ""),
+					createCell(
+						log.path ||
+							"",
+					),
 
-					createCell(log.status ?? ""),
+					createCell(
+						log.status ??
+							"",
+					),
 
-					createCell(findings.length),
+					createCell(
+						findings.length,
+					),
 				);
 
-				const detailsRow = createDetailsRow(log);
+				const toggleDetails =
+					() => {
+						if (
+							expandedRows.has(
+								index,
+							)
+						) {
+							expandedRows.delete(
+								index,
+							);
+						} else {
+							expandedRows.add(
+								index,
+							);
+						}
 
-				const toggleDetails = () => {
-					const expanded = row.getAttribute("aria-expanded") === "true";
+						/*
+						 * Expansion changes the DOM structure,
+						 * so this render must be forced.
+						 */
+						scheduleRender(
+							true,
+						);
+					};
 
-					row.setAttribute("aria-expanded", expanded ? "false" : "true");
+				row.addEventListener(
+					"click",
+					toggleDetails,
+				);
 
-					detailsRow.hidden = expanded;
+				row.addEventListener(
+					"keydown",
+					(event) => {
+						if (
+							event.key ===
+								"Enter" ||
+							event.key ===
+								" "
+						) {
+							event.preventDefault();
 
-					toggle.textContent = expanded ? "›" : "⌄";
+							toggleDetails();
+						}
+					},
+				);
+
+				return row;
+			};
+
+			const getRenderWindow =
+				() => {
+					const scrollTop =
+						container.scrollTop;
+
+					const viewportHeight =
+						container.clientHeight;
+
+					const visibleStart =
+						Math.floor(
+							scrollTop /
+								rowHeight,
+						);
+
+					const visibleCount =
+						Math.ceil(
+							viewportHeight /
+								rowHeight,
+						);
+
+					const startIndex =
+						Math.max(
+							0,
+							visibleStart -
+								overscan,
+						);
+
+					const endIndex =
+						Math.min(
+							logs.length,
+							visibleStart +
+								visibleCount +
+								overscan,
+						);
+
+					return {
+						startIndex,
+						endIndex,
+					};
 				};
 
-				row.addEventListener("click", toggleDetails);
+			/*
+			 * Update only the virtual padding surrounding the
+			 * existing rows.
+			 *
+			 * This is the important part for streamed data:
+			 * if the user's visible window hasn't changed,
+			 * the actual row DOM remains untouched.
+			 */
+			const updateSpacerHeights =
+				(
+					startIndex,
+					endIndex,
+				) => {
+					const topSpacer =
+						body.querySelector(
+							".explorer-spacer-row[data-position='top']",
+						);
 
-				row.addEventListener("keydown", (event) => {
-					if (event.key === "Enter" || event.key === " ") {
-						event.preventDefault();
+					const bottomSpacer =
+						body.querySelector(
+							".explorer-spacer-row[data-position='bottom']",
+						);
 
-						toggleDetails();
+					const topHeight =
+						startIndex *
+						rowHeight;
+
+					const bottomHeight =
+						Math.max(
+							0,
+							(
+								logs.length -
+								endIndex
+							) *
+								rowHeight,
+						);
+
+					if (
+						topSpacer &&
+						topSpacer.firstElementChild
+					) {
+						topSpacer.firstElementChild.style.height =
+							Math.max(
+								0,
+								topHeight,
+							) +
+							"px";
 					}
-				});
 
-				body.append(row, detailsRow);
+					if (
+						bottomSpacer &&
+						bottomSpacer.firstElementChild
+					) {
+						bottomSpacer.firstElementChild.style.height =
+							Math.max(
+								0,
+								bottomHeight,
+							) +
+							"px";
+					}
+				};
 
-				rowCount++;
-			};
+			const render = (
+				force = false,
+			) => {
+				renderPending =
+					false;
 
-			const updateStatus = (message) => {
-				if (!statusElement) {
+				if (logs.length === 0) {
 					return;
 				}
 
-				statusElement.textContent = message;
-			};
+				const {
+					startIndex,
+					endIndex,
+				} =
+					getRenderWindow();
 
-			source.addEventListener("open", () => {
-				updateStatus("Streaming logs...");
-			});
+				/*
+				 * If the same virtual range is already in
+				 * the DOM, do not recreate the rows.
+				 *
+				 * Only update the virtual spacer heights.
+				 *
+				 * This prevents:
+				 *
+				 * - hover flashing
+				 * - focus loss
+				 * - native tooltip resets
+				 * - needless DOM allocation
+				 */
+				if (
+					!force &&
+					startIndex ===
+						renderedStart &&
+					endIndex ===
+						renderedEnd
+				) {
+					updateSpacerHeights(
+						startIndex,
+						endIndex,
+					);
 
-			source.addEventListener("logs", (event) => {
-				const logs = JSON.parse(event.data);
-
-				for (const log of logs) {
-					appendRow(log);
+					return;
 				}
 
-				updateStatus("Streaming logs — " + rowCount + " matches");
-			});
+				const topHeight =
+					startIndex *
+					rowHeight;
 
-			source.addEventListener("node_done", () => {
-				completedNodes++;
+				const bottomHeight =
+					Math.max(
+						0,
+						(
+							logs.length -
+							endIndex
+						) *
+							rowHeight,
+					);
 
-				const nodeLabel =
-					completedNodes === 1 ? "node complete" : "nodes complete";
+				const fragment =
+					document.createDocumentFragment();
 
-				updateStatus(
-					"Streaming logs — " +
-						rowCount +
-						" matches, " +
-						completedNodes +
+				/*
+				 * Always keep both spacer rows present.
+				 *
+				 * That lets incoming SSE batches update
+				 * their heights without replacing the
+				 * visible rows.
+				 */
+				const topSpacer =
+					createSpacerRow(
+						topHeight,
+					);
+
+				topSpacer.dataset.position =
+					"top";
+
+				fragment.append(
+					topSpacer,
+				);
+
+				for (
+					let index =
+						startIndex;
+					index <
+					endIndex;
+					index++
+				) {
+					const log =
+						logs[index];
+
+					fragment.append(
+						createLogRow(
+							log,
+							index,
+						),
+					);
+
+					/*
+					 * Details are only created for
+					 * expanded rows currently inside
+					 * the rendered virtual window.
+					 */
+					if (
+						expandedRows.has(
+							index,
+						)
+					) {
+						fragment.append(
+							createDetailsRow(
+								log,
+							),
+						);
+					}
+				}
+
+				const bottomSpacer =
+					createSpacerRow(
+						bottomHeight,
+					);
+
+				bottomSpacer.dataset.position =
+					"bottom";
+
+				fragment.append(
+					bottomSpacer,
+				);
+
+				body.replaceChildren(
+					fragment,
+				);
+
+				renderedStart =
+					startIndex;
+
+				renderedEnd =
+					endIndex;
+			};
+
+			const scheduleRender = (
+				force = false,
+			) => {
+				if (renderPending) {
+					return;
+				}
+
+				renderPending =
+					true;
+
+				requestAnimationFrame(
+					() => {
+						render(
+							force,
+						);
+					},
+				);
+			};
+
+			/*
+			 * Scrolling changes which virtual indexes
+			 * need to be represented in the DOM.
+			 */
+			container.addEventListener(
+				"scroll",
+				() => {
+					scheduleRender();
+				},
+				{
+					passive: true,
+				},
+			);
+
+			source.addEventListener(
+				"open",
+				() => {
+					updateStatus(
+						"Streaming logs...",
+					);
+				},
+			);
+
+			source.addEventListener(
+				"logs",
+				(event) => {
+					let incoming;
+
+					try {
+						incoming =
+							JSON.parse(
+								event.data,
+							);
+					} catch (error) {
+						console.error(
+							"Failed to parse Explorer logs:",
+							error,
+						);
+
+						return;
+					}
+
+					if (
+						!Array.isArray(
+							incoming,
+						)
+					) {
+						console.error(
+							"Invalid Explorer logs payload:",
+							incoming,
+						);
+
+						return;
+					}
+
+					/*
+					 * Store the data first.
+					 *
+					 * scheduleRender() will only replace
+					 * the visible DOM if the virtual window
+					 * actually changed.
+					 */
+					logs.push(
+						...incoming,
+					);
+
+					scheduleRender();
+
+					updateStatus(
+						"Streaming logs — " +
+							logs.length +
+							" matches",
+					);
+				},
+			);
+
+			source.addEventListener(
+				"node_done",
+				() => {
+					completedNodes++;
+
+					const nodeLabel =
+						completedNodes ===
+							1
+							? "node complete"
+							: "nodes complete";
+
+					updateStatus(
+						"Streaming logs — " +
+							logs.length +
+							" matches, " +
+							completedNodes +
+							" " +
+							nodeLabel,
+					);
+				},
+			);
+
+			source.addEventListener(
+				"node_error",
+				(event) => {
+					let result;
+
+					try {
+						result =
+							JSON.parse(
+								event.data,
+							);
+					} catch (error) {
+						console.error(
+							"Failed to parse node error:",
+							error,
+						);
+
+						return;
+					}
+
+					failedNodes++;
+
+					console.error(
+						"Collector stream failed:",
+						result.node_name ||
+							result.node_id,
+						result.message,
+					);
+
+					const errorLabel =
+						failedNodes ===
+							1
+							? "node error"
+							: "node errors";
+
+					updateStatus(
+						"Streaming logs — " +
+							logs.length +
+							" matches, " +
+							failedNodes +
+							" " +
+							errorLabel,
+					);
+				},
+			);
+
+			source.addEventListener(
+				"done",
+				(event) => {
+					let result;
+
+					try {
+						result =
+							JSON.parse(
+								event.data,
+							);
+					} catch (error) {
+						console.error(
+							"Failed to parse done event:",
+							error,
+						);
+
+						source.close();
+
+						return;
+					}
+
+					source.close();
+
+					if (
+						logs.length ===
+							0
+					) {
+						const row =
+							document.createElement(
+								"tr",
+							);
+
+						row.id =
+							"explorer-empty-row";
+
+						const cell =
+							document.createElement(
+								"td",
+							);
+
+						cell.colSpan =
+							8;
+
+						cell.className =
+							"explorer-empty";
+
+						cell.textContent =
+							"No logs found.";
+
+						row.append(
+							cell,
+						);
+
+						body.replaceChildren(
+							row,
+						);
+
+						renderedStart =
+							-1;
+
+						renderedEnd =
+							-1;
+					} else {
+						scheduleRender();
+					}
+
+					const nodeLabel =
+						result.completed_nodes ===
+							1
+							? "node"
+							: "nodes";
+
+					let message =
+						"Complete — " +
+						result.matches +
+						" matches across " +
+						result.completed_nodes +
 						" " +
-						nodeLabel,
-				);
-			});
+						nodeLabel;
 
-			source.addEventListener("node_error", (event) => {
-				const result = JSON.parse(event.data);
+					if (
+						result.failed_nodes >
+							0
+					) {
+						message +=
+							" (" +
+							result.failed_nodes +
+							" failed)";
+					}
 
-				failedNodes++;
+					updateStatus(
+						message,
+					);
+				},
+			);
 
-				console.error(
-					"Collector stream failed:",
-					result.node_name || result.node_id,
-					result.message,
-				);
+			source.onerror =
+				() => {
+					if (
+						source.readyState ===
+							EventSource.CLOSED
+					) {
+						updateStatus(
+							"Explorer stream closed.",
+						);
 
-				const errorLabel = failedNodes === 1 ? "node error" : "node errors";
+						return;
+					}
 
-				updateStatus(
-					"Streaming logs — " +
-						rowCount +
-						" matches, " +
-						failedNodes +
-						" " +
-						errorLabel,
-				);
-			});
+					if (
+						source.readyState ===
+							EventSource.CONNECTING
+					) {
+						updateStatus(
+							"Explorer stream disconnected — reconnecting...",
+						);
 
-			source.addEventListener("done", (event) => {
-				const result = JSON.parse(event.data);
+						return;
+					}
 
-				source.close();
+					updateStatus(
+						"Explorer stream connection error.",
+					);
+				};
 
-				if (rowCount === 0) {
-					removeEmptyRow();
-
-					const row = document.createElement("tr");
-
-					row.id = "explorer-empty-row";
-
-					const cell = document.createElement("td");
-
-					cell.colSpan = 8;
-
-					cell.className = "explorer-empty";
-
-					cell.textContent = "No logs found.";
-
-					row.append(cell);
-
-					body.append(row);
-				}
-
-				const nodeLabel = result.completed_nodes === 1 ? "node" : "nodes";
-
-				let message =
-					"Complete — " +
-					result.matches +
-					" matches across " +
-					result.completed_nodes +
-					" " +
-					nodeLabel;
-
-				if (result.failed_nodes > 0) {
-					message += " (" + result.failed_nodes + " failed)";
-				}
-
-				updateStatus(message);
-			});
-
-			source.onerror = () => {
-				if (source.readyState === EventSource.CLOSED) {
-					updateStatus("Explorer stream closed.");
-
-					return;
-				}
-
-				if (source.readyState === EventSource.CONNECTING) {
-					updateStatus("Explorer stream disconnected — reconnecting...");
-
-					return;
-				}
-
-				updateStatus("Explorer stream connection error.");
-			};
-
-			window.addEventListener("beforeunload", () => {
-				source.close();
-			});
+			window.addEventListener(
+				"beforeunload",
+				() => {
+					source.close();
+				},
+			);
 		})();
 	</script>
 }

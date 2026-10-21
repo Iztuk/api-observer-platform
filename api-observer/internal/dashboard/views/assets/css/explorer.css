@@ -26,6 +26,7 @@
   gap: 0.75rem;
 
   flex-shrink: 0;
+
   min-width: 0;
 }
 
@@ -169,6 +170,7 @@
 
 .explorer-advanced summary svg {
   flex-shrink: 0;
+
   color: var(--muted-text-color);
 
   transition: transform 0.15s ease;
@@ -211,6 +213,7 @@
 .explorer-filter select {
   width: 100%;
   min-width: 0;
+
   box-sizing: border-box;
 
   padding: 0.75rem;
@@ -287,6 +290,8 @@
 ========================================= */
 
 .explorer-table-container {
+  position: relative;
+
   flex: 1 1 0;
 
   min-width: 0;
@@ -301,6 +306,12 @@
 
   scrollbar-width: thin;
   overscroll-behavior: contain;
+
+  /*
+   * Helps isolate layout work caused by the large
+   * virtualized table from the rest of the page.
+   */
+  contain: layout paint;
 }
 
 /* =========================================
@@ -318,18 +329,24 @@
 
   font-size: 0.875rem;
   text-align: left;
+
+  table-layout: fixed;
 }
 
 .explorer-table thead {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 10;
 
   background: var(--sidebar-background);
 }
 
 .explorer-table th {
-  padding: 0.9rem 1rem;
+  height: 48px;
+
+  box-sizing: border-box;
+
+  padding: 0 1rem;
 
   color: var(--muted-text-color);
 
@@ -342,7 +359,9 @@
 }
 
 .explorer-table td {
-  padding: 0.9rem 1rem;
+  box-sizing: border-box;
+
+  padding: 0 1rem;
 
   border-bottom: 1px solid var(--border-color);
 
@@ -352,19 +371,35 @@
 .explorer-table td,
 .explorer-table th {
   max-width: 400px;
-  overflow-wrap: anywhere;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* =========================================
-   Expandable Log Row
+   Virtualized Log Row
 ========================================= */
 
+/*
+ * IMPORTANT:
+ *
+ * The JavaScript virtualizer uses a rowHeight
+ * of 48 pixels. This value must remain in sync.
+ */
+
 .explorer-log-row {
+  height: 48px;
+
   cursor: pointer;
 
   transition:
     background 0.15s ease,
     box-shadow 0.15s ease;
+}
+
+.explorer-log-row > td {
+  height: 48px;
 }
 
 .explorer-log-row:hover {
@@ -416,6 +451,24 @@
 }
 
 /* =========================================
+   Virtual Scroll Spacer
+========================================= */
+
+.explorer-spacer-row {
+  pointer-events: none;
+}
+
+.explorer-spacer-row > td {
+  height: 0;
+
+  padding: 0 !important;
+
+  border: none !important;
+
+  background: transparent;
+}
+
+/* =========================================
    Expanded Detail Row
 ========================================= */
 
@@ -423,12 +476,10 @@
   background: var(--sidebar-background);
 }
 
-.explorer-log-details-row[hidden] {
-  display: none;
-}
-
 .explorer-log-details-row > td {
   padding: 0;
+
+  white-space: normal;
 
   border-bottom: 1px solid var(--border-color);
 }
@@ -437,6 +488,14 @@
   padding: 1rem 1.25rem 1.25rem;
 
   border-left: 3px solid var(--border-color);
+
+  /*
+   * Only expanded rows exist in the DOM, but
+   * content visibility still helps if several
+   * expanded rows are present.
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: 200px;
 }
 
 /* =========================================
@@ -468,6 +527,7 @@
   line-height: 1.45;
 
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* =========================================
@@ -527,10 +587,14 @@
 ========================================= */
 
 .explorer-empty {
+  height: 5rem;
+
   color: var(--muted-text-color);
 
   font-size: 0.875rem;
   text-align: center;
+
+  white-space: normal !important;
 }
 
 /* =========================================
