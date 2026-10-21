@@ -191,7 +191,10 @@ templ AnalysisPageContent(
 					Ready
 				</div>
 
-				<div class="analysis-table-container">
+				<div
+					id="analysis-table-container"
+					class="analysis-table-container"
+				>
 					<table class="analysis-table">
 						<thead>
 							<tr>
@@ -262,6 +265,11 @@ templ AnalysisStreamScript() {
 					"analysis-log-body",
 				);
 
+			const container =
+				document.getElementById(
+					"analysis-table-container",
+				);
+
 			const results =
 				document.getElementById(
 					"analysis-results",
@@ -300,6 +308,7 @@ templ AnalysisStreamScript() {
 			if (
 				!form ||
 				!body ||
+				!container ||
 				!results ||
 				!editorSection ||
 				!rulesEditorElement ||
@@ -308,20 +317,56 @@ templ AnalysisStreamScript() {
 				return;
 			}
 
+			/*
+			 * Keep this synchronized with analysis.css.
+			 */
+			const rowHeight = 48;
+
+			/*
+			 * Number of rows rendered outside the
+			 * visible viewport.
+			 */
+			const overscan = 20;
+
+			/*
+			 * Complete set of analysis results.
+			 *
+			 * Only a small window from this array is
+			 * represented in the DOM.
+			 */
+			const logs = [];
+
+			/*
+			 * Expansion state lives outside the DOM
+			 * so it survives virtual scrolling.
+			 */
+			const expandedRows =
+				new Set();
+
 			let controller =
 				null;
 
 			let rulesEditor =
 				null;
 
-			let rowCount =
-				0;
-
 			let completedNodes =
 				0;
 
 			let failedNodes =
 				0;
+
+			let renderPending =
+				false;
+
+			/*
+			 * Range currently represented by actual
+			 * DOM rows.
+			 */
+			let renderedStart =
+				-1;
+
+			let renderedEnd =
+				-1;
 
 			const initializeRulesEditor =
 				() => {
@@ -411,6 +456,18 @@ templ AnalysisStreamScript() {
 							"false",
 						);
 					}
+
+					/*
+					 * The table may have changed size while
+					 * hidden. Recalculate its virtual window.
+					 */
+					requestAnimationFrame(
+						() => {
+							scheduleRender(
+								true,
+							);
+						},
+					);
 				};
 
 			const showEditor =
@@ -468,61 +525,14 @@ templ AnalysisStreamScript() {
 				);
 			}
 
-			const removeEmptyRow =
-				() => {
-					const empty =
-						document.getElementById(
-							"analysis-empty-row",
-						);
-
-					if (empty) {
-						empty.remove();
+			const updateStatus =
+				(message) => {
+					if (!statusElement) {
+						return;
 					}
-				};
 
-			const clearResults =
-				() => {
-					body.innerHTML =
-						"";
-
-					const row =
-						document.createElement(
-							"tr",
-						);
-
-					row.id =
-						"analysis-empty-row";
-
-					const cell =
-						document.createElement(
-							"td",
-						);
-
-					cell.colSpan =
-						8;
-
-					cell.className =
-						"analysis-empty";
-
-					cell.textContent =
-						"Loading logs...";
-
-					row.append(
-						cell,
-					);
-
-					body.append(
-						row,
-					);
-
-					rowCount =
-						0;
-
-					completedNodes =
-						0;
-
-					failedNodes =
-						0;
+					statusElement.textContent =
+						message;
 				};
 
 			const createCell =
@@ -536,8 +546,21 @@ templ AnalysisStreamScript() {
 						value !== undefined &&
 						value !== null
 					) {
+						const text =
+							String(
+								value,
+							);
+
 						cell.textContent =
-							String(value);
+							text;
+
+						/*
+						 * Keep rows one line high for
+						 * virtualization while still allowing
+						 * the full value to be inspected.
+						 */
+						cell.title =
+							text;
 					}
 
 					return cell;
@@ -633,7 +656,8 @@ templ AnalysisStreamScript() {
 						Array.isArray(
 							finding.tags,
 						) &&
-						finding.tags.length > 0
+						finding.tags.length >
+							0
 					) {
 						fields.append(
 							createDetailField(
@@ -661,9 +685,6 @@ templ AnalysisStreamScript() {
 
 					detailsRow.className =
 						"analysis-log-details-row";
-
-					detailsRow.hidden =
-						true;
 
 					const cell =
 						document.createElement(
@@ -714,7 +735,8 @@ templ AnalysisStreamScript() {
 					);
 
 					if (
-						findings.length === 0
+						findings.length ===
+							0
 					) {
 						const empty =
 							document.createElement(
@@ -758,16 +780,54 @@ templ AnalysisStreamScript() {
 					return detailsRow;
 				};
 
-			const appendRow =
-				(log) => {
-					removeEmptyRow();
+			const createSpacerRow =
+				(height) => {
+					const row =
+						document.createElement(
+							"tr",
+						);
 
+					row.className =
+						"analysis-spacer-row";
+
+					const cell =
+						document.createElement(
+							"td",
+						);
+
+					cell.colSpan =
+						8;
+
+					cell.style.height =
+						Math.max(
+							0,
+							height,
+						) +
+						"px";
+
+					row.append(
+						cell,
+					);
+
+					return row;
+				};
+
+			const createLogRow =
+				(
+					log,
+					index,
+				) => {
 					const findings =
 						Array.isArray(
 							log.findings,
 						)
 							? log.findings
 							: [];
+
+					const expanded =
+						expandedRows.has(
+							index,
+						);
 
 					const row =
 						document.createElement(
@@ -776,6 +836,11 @@ templ AnalysisStreamScript() {
 
 					row.className =
 						"analysis-log-row";
+
+					row.dataset.index =
+						String(
+							index,
+						);
 
 					row.tabIndex =
 						0;
@@ -787,14 +852,17 @@ templ AnalysisStreamScript() {
 
 					row.setAttribute(
 						"aria-expanded",
-						"false",
+						expanded
+							? "true"
+							: "false",
 					);
 
 					const timestamp =
 						log.timestamp
 							? new Date(
 									log.timestamp,
-								).toLocaleString()
+								).
+									toLocaleString()
 							: "";
 
 					const toggleCell =
@@ -814,7 +882,9 @@ templ AnalysisStreamScript() {
 						"analysis-row-toggle";
 
 					rowToggle.textContent =
-						"›";
+						expanded
+							? "⌄"
+							: "›";
 
 					toggleCell.append(
 						rowToggle,
@@ -857,32 +927,31 @@ templ AnalysisStreamScript() {
 						),
 					);
 
-					const detailsRow =
-						createDetailsRow(
-							log,
-						);
-
 					const toggleDetails =
 						() => {
-							const expanded =
-								row.getAttribute(
-									"aria-expanded",
-								) === "true";
+							if (
+								expandedRows.has(
+									index,
+								)
+							) {
+								expandedRows.delete(
+									index,
+								);
+							} else {
+								expandedRows.add(
+									index,
+								);
+							}
 
-							row.setAttribute(
-								"aria-expanded",
-								expanded
-									? "false"
-									: "true",
+							/*
+							 * Expansion changes the DOM
+							 * structure, so force the
+							 * current virtual range to
+							 * rebuild.
+							 */
+							scheduleRender(
+								true,
 							);
-
-							detailsRow.hidden =
-								expanded;
-
-							rowToggle.textContent =
-								expanded
-									? "›"
-									: "⌄";
 						};
 
 					row.addEventListener(
@@ -906,23 +975,325 @@ templ AnalysisStreamScript() {
 						},
 					);
 
-					body.append(
-						row,
-						detailsRow,
-					);
-
-					rowCount++;
+					return row;
 				};
 
-			const updateStatus =
-				(message) => {
-					if (!statusElement) {
+			const getRenderWindow =
+				() => {
+					const scrollTop =
+						container.scrollTop;
+
+					const viewportHeight =
+						container.clientHeight;
+
+					const visibleStart =
+						Math.floor(
+							scrollTop /
+								rowHeight,
+						);
+
+					const visibleCount =
+						Math.ceil(
+							viewportHeight /
+								rowHeight,
+						);
+
+					const startIndex =
+						Math.max(
+							0,
+							visibleStart -
+								overscan,
+						);
+
+					const endIndex =
+						Math.min(
+							logs.length,
+							visibleStart +
+								visibleCount +
+								overscan,
+						);
+
+					return {
+						startIndex,
+						endIndex,
+					};
+				};
+
+			const updateSpacerHeights =
+				(
+					startIndex,
+					endIndex,
+				) => {
+					const topSpacer =
+						body.querySelector(
+							".analysis-spacer-row[data-position='top']",
+						);
+
+					const bottomSpacer =
+						body.querySelector(
+							".analysis-spacer-row[data-position='bottom']",
+						);
+
+					const topHeight =
+						startIndex *
+						rowHeight;
+
+					const bottomHeight =
+						Math.max(
+							0,
+							(
+								logs.length -
+								endIndex
+							) *
+								rowHeight,
+						);
+
+					if (
+						topSpacer &&
+						topSpacer.firstElementChild
+					) {
+						topSpacer.firstElementChild.style.height =
+							Math.max(
+								0,
+								topHeight,
+							) +
+							"px";
+					}
+
+					if (
+						bottomSpacer &&
+						bottomSpacer.firstElementChild
+					) {
+						bottomSpacer.firstElementChild.style.height =
+							Math.max(
+								0,
+								bottomHeight,
+							) +
+							"px";
+					}
+				};
+
+			const render =
+				(
+					force = false,
+				) => {
+					renderPending =
+						false;
+
+					if (
+						logs.length ===
+							0
+					) {
 						return;
 					}
 
-					statusElement.textContent =
-						message;
+					const {
+						startIndex,
+						endIndex,
+					} =
+						getRenderWindow();
+
+					/*
+					 * This is what prevents streaming
+					 * batches from causing hovered rows
+					 * to flash.
+					 *
+					 * If the current virtual range is
+					 * unchanged, preserve all visible DOM
+					 * nodes and only update spacer height.
+					 */
+					if (
+						!force &&
+						startIndex ===
+							renderedStart &&
+						endIndex ===
+							renderedEnd
+					) {
+						updateSpacerHeights(
+							startIndex,
+							endIndex,
+						);
+
+						return;
+					}
+
+					const topHeight =
+						startIndex *
+						rowHeight;
+
+					const bottomHeight =
+						Math.max(
+							0,
+							(
+								logs.length -
+								endIndex
+							) *
+								rowHeight,
+						);
+
+					const fragment =
+						document.createDocumentFragment();
+
+					/*
+					 * Keep spacer rows present even when
+					 * their height is zero.
+					 *
+					 * That allows future streamed batches
+					 * to update them without rebuilding
+					 * the visible rows.
+					 */
+					const topSpacer =
+						createSpacerRow(
+							topHeight,
+						);
+
+					topSpacer.dataset.position =
+						"top";
+
+					fragment.append(
+						topSpacer,
+					);
+
+					for (
+						let index =
+							startIndex;
+						index <
+						endIndex;
+						index++
+					) {
+						const log =
+							logs[index];
+
+						fragment.append(
+							createLogRow(
+								log,
+								index,
+							),
+						);
+
+						/*
+						 * Details aren't created at all
+						 * unless this row is expanded.
+						 */
+						if (
+							expandedRows.has(
+								index,
+							)
+						) {
+							fragment.append(
+								createDetailsRow(
+									log,
+								),
+							);
+						}
+					}
+
+					const bottomSpacer =
+						createSpacerRow(
+							bottomHeight,
+						);
+
+					bottomSpacer.dataset.position =
+						"bottom";
+
+					fragment.append(
+						bottomSpacer,
+					);
+
+					body.replaceChildren(
+						fragment,
+					);
+
+					renderedStart =
+						startIndex;
+
+					renderedEnd =
+						endIndex;
 				};
+
+			const scheduleRender =
+				(
+					force = false,
+				) => {
+					if (renderPending) {
+						return;
+					}
+
+					renderPending =
+						true;
+
+					requestAnimationFrame(
+						() => {
+							render(
+								force,
+							);
+						},
+					);
+				};
+
+			const clearResults =
+				() => {
+					logs.length =
+						0;
+
+					expandedRows.clear();
+
+					renderedStart =
+						-1;
+
+					renderedEnd =
+						-1;
+
+					container.scrollTop =
+						0;
+
+					const row =
+						document.createElement(
+							"tr",
+						);
+
+					row.id =
+						"analysis-empty-row";
+
+					const cell =
+						document.createElement(
+							"td",
+						);
+
+					cell.colSpan =
+						8;
+
+					cell.className =
+						"analysis-empty";
+
+					cell.textContent =
+						"Loading logs...";
+
+					row.append(
+						cell,
+					);
+
+					body.replaceChildren(
+						row,
+					);
+
+					completedNodes =
+						0;
+
+					failedNodes =
+						0;
+				};
+
+			container.addEventListener(
+				"scroll",
+				() => {
+					scheduleRender();
+				},
+				{
+					passive:
+						true,
+				},
+			);
 
 			const closeStream =
 				() => {
@@ -941,25 +1312,52 @@ templ AnalysisStreamScript() {
 					eventName,
 					data,
 				) => {
-					switch (eventName) {
+					switch (
+						eventName
+					) {
 					case "logs": {
-						const logs =
-							JSON.parse(
-								data,
+						let incoming;
+
+						try {
+							incoming =
+								JSON.parse(
+									data,
+								);
+						} catch (error) {
+							console.error(
+								"Failed to parse Analysis logs:",
+								error,
 							);
 
-						for (
-							const log
-							of logs
-						) {
-							appendRow(
-								log,
-							);
+							break;
 						}
+
+						if (
+							!Array.isArray(
+								incoming,
+							)
+						) {
+							console.error(
+								"Invalid Analysis logs payload:",
+								incoming,
+							);
+
+							break;
+						}
+
+						/*
+						 * Store data rather than creating
+						 * DOM nodes for every record.
+						 */
+						logs.push(
+							...incoming,
+						);
+
+						scheduleRender();
 
 						updateStatus(
 							"Analyzing logs — " +
-								rowCount +
+								logs.length +
 								" matches",
 						);
 
@@ -970,13 +1368,14 @@ templ AnalysisStreamScript() {
 						completedNodes++;
 
 						const nodeLabel =
-							completedNodes === 1
+							completedNodes ===
+								1
 								? "node complete"
 								: "nodes complete";
 
 						updateStatus(
 							"Analyzing logs — " +
-								rowCount +
+								logs.length +
 								" matches, " +
 								completedNodes +
 								" " +
@@ -987,10 +1386,21 @@ templ AnalysisStreamScript() {
 					}
 
 					case "node_error": {
-						const result =
-							JSON.parse(
-								data,
+						let result;
+
+						try {
+							result =
+								JSON.parse(
+									data,
+								);
+						} catch (error) {
+							console.error(
+								"Failed to parse Analysis node error:",
+								error,
 							);
+
+							break;
+						}
 
 						failedNodes++;
 
@@ -1002,13 +1412,14 @@ templ AnalysisStreamScript() {
 						);
 
 						const errorLabel =
-							failedNodes === 1
+							failedNodes ===
+								1
 								? "node error"
 								: "node errors";
 
 						updateStatus(
 							"Analyzing logs — " +
-								rowCount +
+								logs.length +
 								" matches, " +
 								failedNodes +
 								" " +
@@ -1019,16 +1430,26 @@ templ AnalysisStreamScript() {
 					}
 
 					case "done": {
-						const result =
-							JSON.parse(
-								data,
+						let result;
+
+						try {
+							result =
+								JSON.parse(
+									data,
+								);
+						} catch (error) {
+							console.error(
+								"Failed to parse Analysis done event:",
+								error,
 							);
 
-						if (
-							rowCount === 0
-						) {
-							removeEmptyRow();
+							break;
+						}
 
+						if (
+							logs.length ===
+								0
+						) {
 							const row =
 								document.createElement(
 									"tr",
@@ -1055,13 +1476,22 @@ templ AnalysisStreamScript() {
 								cell,
 							);
 
-							body.append(
+							body.replaceChildren(
 								row,
 							);
+
+							renderedStart =
+								-1;
+
+							renderedEnd =
+								-1;
+						} else {
+							scheduleRender();
 						}
 
 						const nodeLabel =
-							result.completed_nodes === 1
+							result.completed_nodes ===
+								1
 								? "node"
 								: "nodes";
 
@@ -1074,7 +1504,8 @@ templ AnalysisStreamScript() {
 							nodeLabel;
 
 						if (
-							result.failed_nodes > 0
+							result.failed_nodes >
+								0
 						) {
 							message +=
 								" (" +
@@ -1214,6 +1645,9 @@ templ AnalysisStreamScript() {
 					controller =
 						new AbortController();
 
+					const currentController =
+						controller;
+
 					const formData =
 						new FormData(
 							form,
@@ -1231,7 +1665,7 @@ templ AnalysisStreamScript() {
 										formData,
 
 									signal:
-										controller.signal,
+										currentController.signal,
 								},
 							);
 
@@ -1273,8 +1707,18 @@ templ AnalysisStreamScript() {
 								: "Analysis stream failed.",
 						);
 					} finally {
-						controller =
-							null;
+						/*
+						 * Do not clear a newer controller
+						 * if another analysis was started
+						 * before this one finished.
+						 */
+						if (
+							controller ===
+								currentController
+						) {
+							controller =
+								null;
+						}
 					}
 				};
 
@@ -1284,6 +1728,15 @@ templ AnalysisStreamScript() {
 					event.preventDefault();
 
 					startStream();
+				},
+			);
+
+			window.addEventListener(
+				"resize",
+				() => {
+					scheduleRender(
+						true,
+					);
 				},
 			);
 

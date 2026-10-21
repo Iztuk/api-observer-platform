@@ -26,6 +26,7 @@
   gap: 0.75rem;
 
   flex-shrink: 0;
+
   min-width: 0;
 }
 
@@ -169,6 +170,7 @@
 
 .analysis-advanced summary svg {
   flex-shrink: 0;
+
   color: var(--muted-text-color);
 
   transition: transform 0.15s ease;
@@ -389,6 +391,8 @@
 ========================================= */
 
 .analysis-table-container {
+  position: relative;
+
   flex: 1 1 0;
 
   min-width: 0;
@@ -403,6 +407,12 @@
 
   scrollbar-width: thin;
   overscroll-behavior: contain;
+
+  /*
+   * Keep table layout and painting isolated
+   * from the rest of the page.
+   */
+  contain: layout paint;
 }
 
 /* =========================================
@@ -420,18 +430,28 @@
 
   font-size: 0.875rem;
   text-align: left;
+
+  /*
+   * Fixed table layout is important for keeping
+   * the virtual rows at a predictable height.
+   */
+  table-layout: fixed;
 }
 
 .analysis-table thead {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 10;
 
   background: var(--sidebar-background);
 }
 
 .analysis-table th {
-  padding: 0.9rem 1rem;
+  height: 48px;
+
+  box-sizing: border-box;
+
+  padding: 0 1rem;
 
   color: var(--muted-text-color);
 
@@ -444,7 +464,9 @@
 }
 
 .analysis-table td {
-  padding: 0.9rem 1rem;
+  box-sizing: border-box;
+
+  padding: 0 1rem;
 
   border-bottom: 1px solid var(--border-color);
 
@@ -455,19 +477,38 @@
 .analysis-table th {
   max-width: 400px;
 
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* =========================================
-   Expandable Log Row
+   Virtualized Log Row
 ========================================= */
 
+/*
+ * IMPORTANT:
+ *
+ * The Analysis virtualizer uses:
+ *
+ *     const rowHeight = 48;
+ *
+ * Keep this value synchronized with the
+ * JavaScript.
+ */
+
 .analysis-log-row {
+  height: 48px;
+
   cursor: pointer;
 
   transition:
     background 0.15s ease,
     box-shadow 0.15s ease;
+}
+
+.analysis-log-row > td {
+  height: 48px;
 }
 
 .analysis-log-row:hover {
@@ -519,6 +560,24 @@
 }
 
 /* =========================================
+   Virtual Scroll Spacer
+========================================= */
+
+.analysis-spacer-row {
+  pointer-events: none;
+}
+
+.analysis-spacer-row > td {
+  height: 0;
+
+  padding: 0 !important;
+
+  border: 0 !important;
+
+  background: transparent;
+}
+
+/* =========================================
    Expanded Detail Row
 ========================================= */
 
@@ -526,12 +585,10 @@
   background: var(--sidebar-background);
 }
 
-.analysis-log-details-row[hidden] {
-  display: none;
-}
-
 .analysis-log-details-row > td {
   padding: 0;
+
+  white-space: normal;
 
   border-bottom: 1px solid var(--border-color);
 }
@@ -540,6 +597,15 @@
   padding: 1rem 1.25rem 1.25rem;
 
   border-left: 3px solid var(--border-color);
+
+  /*
+   * Details only exist for expanded rows, but
+   * this still lets the browser skip expensive
+   * inner rendering if the detail row is outside
+   * the visible viewport.
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: 200px;
 }
 
 /* =========================================
@@ -571,6 +637,7 @@
   line-height: 1.45;
 
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* =========================================
@@ -768,10 +835,14 @@
 ========================================= */
 
 .analysis-empty {
+  height: 5rem;
+
   color: var(--muted-text-color);
 
   font-size: 0.875rem;
   text-align: center;
+
+  white-space: normal !important;
 }
 
 /* =========================================
