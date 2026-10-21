@@ -220,114 +220,67 @@ templ ExplorerPageContent(
 templ ExplorerStreamScript() {
 	<script>
 		(() => {
-			const form =
-				document.getElementById(
-					"explorer-form",
-				);
+			const form = document.getElementById("explorer-form");
+			const body = document.getElementById("explorer-log-body");
+			const container = document.getElementById("explorer-table-container");
+			const statusElement = document.getElementById("explorer-stream-status");
+			const nodeSelect = document.getElementById("explorer-node");
 
-			const body =
-				document.getElementById(
-					"explorer-log-body",
-				);
-
-			const container =
-				document.getElementById(
-					"explorer-table-container",
-				);
-
-			const statusElement =
-				document.getElementById(
-					"explorer-stream-status",
-				);
-
-			const nodeSelect =
-				document.getElementById(
-					"explorer-node",
-				);
-
-			if (
-				!form ||
-				!body ||
-				!container
-			) {
+			if (!form || !body || !container) {
 				return;
 			}
 
-			/*
-			 * There is nothing to stream without a
-			 * selected connected node.
-			 */
-			if (
-				!nodeSelect ||
-				!nodeSelect.value
-			) {
+			if (!nodeSelect || !nodeSelect.value) {
 				return;
 			}
 
-			/*
-			 * The form is submitted ONLY through the
-			 * Search button / normal form submission.
-			 *
-			 * Changing the node dropdown merely changes
-			 * which node value will be submitted.
-			 */
-			const params =
-				new URLSearchParams(
-					new FormData(
-						form,
-					),
-				);
-
-			const source =
-				new EventSource(
-					"/logs?" +
-						params.toString(),
-				);
+			const params = new URLSearchParams(new FormData(form));
 
 			/*
-			 * Keep synchronized with explorer.css.
+			 * Measure the total stream time as observed
+			 * by the frontend.
 			 */
+			const streamStartTime = performance.now();
+
+			const source = new EventSource("/logs?" + params.toString());
+
 			const rowHeight = 48;
-
 			const overscan = 20;
 
-			/*
-			 * Single-node stream.
-			 *
-			 * Collector batches are already ordered, so
-			 * they can simply be appended.
-			 */
 			const logs = [];
+			const knownLogKeys = new Set();
+			const expandedRows = new Set();
 
-			const knownLogKeys =
-				new Set();
-
-			const expandedRows =
-				new Set();
-
-			let renderPending =
-				false;
-
-			let forceRenderPending =
-				false;
+			let renderPending = false;
+			let forceRenderPending = false;
 
 			let renderedStart = -1;
 			let renderedEnd = -1;
 
-			const updateStatus = (
-				message,
-			) => {
+			const updateStatus = (message) => {
 				if (!statusElement) {
 					return;
 				}
 
-				statusElement.textContent =
-					message;
+				statusElement.textContent = message;
 			};
 
-			const logKey = (
-				log,
-			) => {
+			const formatDuration = (milliseconds) => {
+				if (milliseconds < 1000) {
+					return milliseconds.toFixed(0) + " ms";
+				}
+
+				if (milliseconds < 60000) {
+					return (milliseconds / 1000).toFixed(2) + " s";
+				}
+
+				const minutes = Math.floor(milliseconds / 60000);
+				const seconds = (milliseconds % 60000) / 1000;
+
+				return minutes + "m " + seconds.toFixed(2) + "s";
+			};
+
+			const logKey = (log) => {
 				return [
 					log.node_id || "",
 					log.request_id || "",
@@ -336,679 +289,313 @@ templ ExplorerStreamScript() {
 				].join("|");
 			};
 
-			const createCell = (
-				value,
-			) => {
-				const cell =
-					document.createElement(
-						"td",
-					);
+			const createCell = (value) => {
+				const cell = document.createElement("td");
 
-				if (
-					value !== undefined &&
-					value !== null
-				) {
-					const text =
-						String(
-							value,
-						);
+				if (value !== undefined && value !== null) {
+					const text = String(value);
 
-					cell.textContent =
-						text;
-
-					cell.title =
-						text;
+					cell.textContent = text;
+					cell.title = text;
 				}
 
 				return cell;
 			};
 
-			const createDetailField = (
-				label,
-				value,
-			) => {
-				const field =
-					document.createElement(
-						"div",
-					);
+			const createDetailField = (label, value) => {
+				const field = document.createElement("div");
 
-				field.className =
-					"explorer-detail-field";
+				field.className = "explorer-detail-field";
 
-				const labelElement =
-					document.createElement(
-						"span",
-					);
+				const labelElement = document.createElement("span");
 
-				labelElement.className =
-					"explorer-detail-label";
+				labelElement.className = "explorer-detail-label";
+				labelElement.textContent = label;
 
-				labelElement.textContent =
-					label;
+				const valueElement = document.createElement("span");
 
-				const valueElement =
-					document.createElement(
-						"span",
-					);
+				valueElement.className = "explorer-detail-value";
+				valueElement.textContent = value ?? "";
 
-				valueElement.className =
-					"explorer-detail-value";
-
-				valueElement.textContent =
-					value ?? "";
-
-				field.append(
-					labelElement,
-					valueElement,
-				);
+				field.append(labelElement, valueElement);
 
 				return field;
 			};
 
-			const createFinding = (
-				finding,
-			) => {
-				const findingElement =
-					document.createElement(
-						"div",
-					);
+			const createFinding = (finding) => {
+				const findingElement = document.createElement("div");
 
-				findingElement.className =
-					"explorer-finding";
+				findingElement.className = "explorer-finding";
 
 				if (finding.severity) {
-					findingElement.dataset.severity =
-						finding.severity;
+					findingElement.dataset.severity = finding.severity;
 				}
 
-				const fields =
-					document.createElement(
-						"div",
-					);
+				const fields = document.createElement("div");
 
-				fields.className =
-					"explorer-finding-fields";
+				fields.className = "explorer-finding-fields";
 
 				fields.append(
-					createDetailField(
-						"Title",
-						finding.title ||
-							"Finding",
-					),
-
-					createDetailField(
-						"Severity",
-						finding.severity ||
-							"Unknown",
-					),
-
-					createDetailField(
-						"Message",
-						finding.message ||
-							"",
-					),
+					createDetailField("Title", finding.title || "Finding"),
+					createDetailField("Severity", finding.severity || "Unknown"),
+					createDetailField("Message", finding.message || ""),
 				);
 
-				if (
-					Array.isArray(
-						finding.tags,
-					) &&
-					finding.tags.length >
-						0
-				) {
+				if (Array.isArray(finding.tags) && finding.tags.length > 0) {
 					fields.append(
-						createDetailField(
-							"Tags",
-							finding.tags.join(
-								", ",
-							),
-						),
+						createDetailField("Tags", finding.tags.join(", ")),
 					);
 				}
 
-				findingElement.append(
-					fields,
-				);
+				findingElement.append(fields);
 
 				return findingElement;
 			};
 
-			const createDetailsRow = (
-				log,
-			) => {
-				const detailsRow =
-					document.createElement(
-						"tr",
-					);
+			const createDetailsRow = (log) => {
+				const detailsRow = document.createElement("tr");
 
-				detailsRow.className =
-					"explorer-log-details-row";
+				detailsRow.className = "explorer-log-details-row";
 
-				const cell =
-					document.createElement(
-						"td",
-					);
+				const cell = document.createElement("td");
 
 				cell.colSpan = 7;
 
-				const details =
-					document.createElement(
-						"div",
-					);
+				const details = document.createElement("div");
 
-				details.className =
-					"explorer-log-details";
+				details.className = "explorer-log-details";
 
-				const findings =
-					Array.isArray(
-						log.findings,
-					)
-						? log.findings
-						: [];
+				const findings = Array.isArray(log.findings)
+					? log.findings
+					: [];
 
-				const findingsSection =
-					document.createElement(
-						"div",
-					);
+				const findingsSection = document.createElement("div");
 
-				findingsSection.className =
-					"explorer-findings";
+				findingsSection.className = "explorer-findings";
 
-				const title =
-					document.createElement(
-						"div",
-					);
+				const title = document.createElement("div");
 
-				title.className =
-					"explorer-findings-title";
+				title.className = "explorer-findings-title";
+				title.textContent = "Findings (" + findings.length + ")";
 
-				title.textContent =
-					"Findings (" +
-					findings.length +
-					")";
+				findingsSection.append(title);
 
-				findingsSection.append(
-					title,
-				);
+				if (findings.length === 0) {
+					const empty = document.createElement("div");
 
-				if (
-					findings.length === 0
-				) {
-					const empty =
-						document.createElement(
-							"div",
-						);
+					empty.className = "explorer-findings-empty";
+					empty.textContent = "No findings for this log.";
 
-					empty.className =
-						"explorer-findings-empty";
-
-					empty.textContent =
-						"No findings for this log.";
-
-					findingsSection.append(
-						empty,
-					);
+					findingsSection.append(empty);
 				} else {
-					for (
-						const finding of
-							findings
-					) {
-						findingsSection.append(
-							createFinding(
-								finding,
-							),
-						);
+					for (const finding of findings) {
+						findingsSection.append(createFinding(finding));
 					}
 				}
 
-				details.append(
-					findingsSection,
-				);
-
-				cell.append(
-					details,
-				);
-
-				detailsRow.append(
-					cell,
-				);
+				details.append(findingsSection);
+				cell.append(details);
+				detailsRow.append(cell);
 
 				return detailsRow;
 			};
 
-			const createSpacerRow = (
-				height,
-			) => {
-				const row =
-					document.createElement(
-						"tr",
-					);
+			const createSpacerRow = (height) => {
+				const row = document.createElement("tr");
 
-				row.className =
-					"explorer-spacer-row";
+				row.className = "explorer-spacer-row";
 
-				const cell =
-					document.createElement(
-						"td",
-					);
+				const cell = document.createElement("td");
 
 				cell.colSpan = 7;
+				cell.style.height = Math.max(0, height) + "px";
 
-				cell.style.height =
-					Math.max(
-						0,
-						height,
-					) + "px";
-
-				row.append(
-					cell,
-				);
+				row.append(cell);
 
 				return row;
 			};
 
-			const createLogRow = (
-				log,
-				index,
-			) => {
-				const findings =
-					Array.isArray(
-						log.findings,
-					)
-						? log.findings
-						: [];
+			const createLogRow = (log, index) => {
+				const findings = Array.isArray(log.findings)
+					? log.findings
+					: [];
 
-				const key =
-					logKey(
-						log,
-					);
+				const key = logKey(log);
+				const expanded = expandedRows.has(key);
 
-				const expanded =
-					expandedRows.has(
-						key,
-					);
+				const row = document.createElement("tr");
 
-				const row =
-					document.createElement(
-						"tr",
-					);
-
-				row.className =
-					"explorer-log-row";
-
-				row.dataset.index =
-					String(
-						index,
-					);
-
-				row.dataset.key =
-					key;
-
+				row.className = "explorer-log-row";
+				row.dataset.index = String(index);
+				row.dataset.key = key;
 				row.tabIndex = 0;
 
-				row.setAttribute(
-					"role",
-					"button",
-				);
+				row.setAttribute("role", "button");
+				row.setAttribute("aria-expanded", expanded ? "true" : "false");
 
-				row.setAttribute(
-					"aria-expanded",
-					expanded
-						? "true"
-						: "false",
-				);
+				const timestamp = log.timestamp
+					? new Date(log.timestamp).toLocaleString()
+					: "";
 
-				const timestamp =
-					log.timestamp
-						? new Date(
-								log.timestamp,
-							).
-								toLocaleString()
-						: "";
+				const toggleCell = document.createElement("td");
 
-				const toggleCell =
-					document.createElement(
-						"td",
-					);
+				toggleCell.className = "explorer-toggle-cell";
 
-				toggleCell.className =
-					"explorer-toggle-cell";
+				const toggle = document.createElement("span");
 
-				const toggle =
-					document.createElement(
-						"span",
-					);
+				toggle.className = "explorer-row-toggle";
+				toggle.textContent = expanded ? "⌄" : "›";
 
-				toggle.className =
-					"explorer-row-toggle";
+				toggleCell.append(toggle);
 
-				toggle.textContent =
-					expanded
-						? "⌄"
-						: "›";
-
-				toggleCell.append(
-					toggle,
-				);
-
-				/*
-				 * Node column removed.
-				 */
 				row.append(
 					toggleCell,
-
-					createCell(
-						timestamp,
-					),
-
-					createCell(
-						log.type ||
-							"",
-					),
-
-					createCell(
-						log.method ||
-							"",
-					),
-
-					createCell(
-						log.path ||
-							"",
-					),
-
-					createCell(
-						log.status ??
-							"",
-					),
-
-					createCell(
-						findings.length,
-					),
+					createCell(timestamp),
+					createCell(log.type || ""),
+					createCell(log.method || ""),
+					createCell(log.path || ""),
+					createCell(log.status ?? ""),
+					createCell(findings.length),
 				);
 
-				const toggleDetails =
-					() => {
-						if (
-							expandedRows.has(
-								key,
-							)
-						) {
-							expandedRows.delete(
-								key,
-							);
-						} else {
-							expandedRows.add(
-								key,
-							);
-						}
+				const toggleDetails = () => {
+					if (expandedRows.has(key)) {
+						expandedRows.delete(key);
+					} else {
+						expandedRows.add(key);
+					}
 
-						scheduleRender(
-							true,
-						);
-					};
+					scheduleRender(true);
+				};
 
-				row.addEventListener(
-					"click",
-					toggleDetails,
-				);
+				row.addEventListener("click", toggleDetails);
 
-				row.addEventListener(
-					"keydown",
-					(event) => {
-						if (
-							event.key ===
-								"Enter" ||
-							event.key ===
-								" "
-						) {
-							event.preventDefault();
-
-							toggleDetails();
-						}
-					},
-				);
+				row.addEventListener("keydown", (event) => {
+					if (event.key === "Enter" || event.key === " ") {
+						event.preventDefault();
+						toggleDetails();
+					}
+				});
 
 				return row;
 			};
 
-			const getRenderWindow =
-				() => {
-					const scrollTop =
-						container.scrollTop;
+			const getRenderWindow = () => {
+				const scrollTop = container.scrollTop;
+				const viewportHeight = container.clientHeight;
+				const visibleStart = Math.floor(scrollTop / rowHeight);
+				const visibleCount = Math.ceil(viewportHeight / rowHeight);
+				const startIndex = Math.max(0, visibleStart - overscan);
 
-					const viewportHeight =
-						container.clientHeight;
+				const endIndex = Math.min(
+					logs.length,
+					visibleStart + visibleCount + overscan,
+				);
 
-					const visibleStart =
-						Math.floor(
-							scrollTop /
-								rowHeight,
-						);
-
-					const visibleCount =
-						Math.ceil(
-							viewportHeight /
-								rowHeight,
-						);
-
-					const startIndex =
-						Math.max(
-							0,
-							visibleStart -
-								overscan,
-						);
-
-					const endIndex =
-						Math.min(
-							logs.length,
-							visibleStart +
-								visibleCount +
-								overscan,
-						);
-
-					return {
-						startIndex,
-						endIndex,
-					};
-				};
-
-			const updateSpacerHeights =
-				(
+				return {
 					startIndex,
 					endIndex,
-				) => {
-					const topSpacer =
-						body.querySelector(
-							".explorer-spacer-row[data-position='top']",
-						);
-
-					const bottomSpacer =
-						body.querySelector(
-							".explorer-spacer-row[data-position='bottom']",
-						);
-
-					const topHeight =
-						startIndex *
-						rowHeight;
-
-					const bottomHeight =
-						Math.max(
-							0,
-							(
-								logs.length -
-								endIndex
-							) *
-								rowHeight,
-						);
-
-					if (
-						topSpacer &&
-						topSpacer.firstElementChild
-					) {
-						topSpacer.firstElementChild.style.height =
-							Math.max(
-								0,
-								topHeight,
-							) +
-							"px";
-					}
-
-					if (
-						bottomSpacer &&
-						bottomSpacer.firstElementChild
-					) {
-						bottomSpacer.firstElementChild.style.height =
-							Math.max(
-								0,
-								bottomHeight,
-							) +
-							"px";
-					}
 				};
+			};
 
-			const render = (
-				force = false,
-			) => {
-				renderPending =
-					false;
+			const updateSpacerHeights = (startIndex, endIndex) => {
+				const topSpacer = body.querySelector(
+					".explorer-spacer-row[data-position='top']",
+				);
+
+				const bottomSpacer = body.querySelector(
+					".explorer-spacer-row[data-position='bottom']",
+				);
+
+				const topHeight = startIndex * rowHeight;
+				const bottomHeight = Math.max(
+					0,
+					(logs.length - endIndex) * rowHeight,
+				);
+
+				if (topSpacer && topSpacer.firstElementChild) {
+					topSpacer.firstElementChild.style.height =
+						Math.max(0, topHeight) + "px";
+				}
+
+				if (bottomSpacer && bottomSpacer.firstElementChild) {
+					bottomSpacer.firstElementChild.style.height =
+						Math.max(0, bottomHeight) + "px";
+				}
+			};
+
+			const render = (force = false) => {
+				renderPending = false;
 
 				if (logs.length === 0) {
 					return;
 				}
 
-				const {
-					startIndex,
-					endIndex,
-				} =
-					getRenderWindow();
+				const { startIndex, endIndex } = getRenderWindow();
 
 				if (
 					!force &&
-					startIndex ===
-						renderedStart &&
-					endIndex ===
-						renderedEnd
+					startIndex === renderedStart &&
+					endIndex === renderedEnd
 				) {
-					updateSpacerHeights(
-						startIndex,
-						endIndex,
-					);
-
+					updateSpacerHeights(startIndex, endIndex);
 					return;
 				}
 
-				const topHeight =
-					startIndex *
-					rowHeight;
-
-				const bottomHeight =
-					Math.max(
-						0,
-						(
-							logs.length -
-							endIndex
-						) *
-							rowHeight,
-					);
-
-				const fragment =
-					document.createDocumentFragment();
-
-				const topSpacer =
-					createSpacerRow(
-						topHeight,
-					);
-
-				topSpacer.dataset.position =
-					"top";
-
-				fragment.append(
-					topSpacer,
+				const topHeight = startIndex * rowHeight;
+				const bottomHeight = Math.max(
+					0,
+					(logs.length - endIndex) * rowHeight,
 				);
 
-				for (
-					let index =
-						startIndex;
-					index <
-						endIndex;
-					index++
-				) {
-					const log =
-						logs[index];
+				const fragment = document.createDocumentFragment();
 
-					fragment.append(
-						createLogRow(
-							log,
-							index,
-						),
-					);
+				const topSpacer = createSpacerRow(topHeight);
 
-					if (
-						expandedRows.has(
-							logKey(
-								log,
-							),
-						)
-					) {
-						fragment.append(
-							createDetailsRow(
-								log,
-							),
-						);
+				topSpacer.dataset.position = "top";
+
+				fragment.append(topSpacer);
+
+				for (let index = startIndex; index < endIndex; index++) {
+					const log = logs[index];
+
+					fragment.append(createLogRow(log, index));
+
+					if (expandedRows.has(logKey(log))) {
+						fragment.append(createDetailsRow(log));
 					}
 				}
 
-				const bottomSpacer =
-					createSpacerRow(
-						bottomHeight,
-					);
+				const bottomSpacer = createSpacerRow(bottomHeight);
 
-				bottomSpacer.dataset.position =
-					"bottom";
+				bottomSpacer.dataset.position = "bottom";
 
-				fragment.append(
-					bottomSpacer,
-				);
+				fragment.append(bottomSpacer);
 
-				body.replaceChildren(
-					fragment,
-				);
+				body.replaceChildren(fragment);
 
-				renderedStart =
-					startIndex;
-
-				renderedEnd =
-					endIndex;
+				renderedStart = startIndex;
+				renderedEnd = endIndex;
 			};
 
-			const scheduleRender = (
-				force = false,
-			) => {
+			const scheduleRender = (force = false) => {
 				if (force) {
-					forceRenderPending =
-						true;
+					forceRenderPending = true;
 				}
 
 				if (renderPending) {
 					return;
 				}
 
-				renderPending =
-					true;
+				renderPending = true;
 
-				requestAnimationFrame(
-					() => {
-						const shouldForce =
-							forceRenderPending;
+				requestAnimationFrame(() => {
+					const shouldForce = forceRenderPending;
 
-						forceRenderPending =
-							false;
+					forceRenderPending = false;
 
-						render(
-							shouldForce,
-						);
-					},
-				);
+					render(shouldForce);
+				});
 			};
 
 			container.addEventListener(
@@ -1021,282 +608,170 @@ templ ExplorerStreamScript() {
 				},
 			);
 
-			window.addEventListener(
-				"resize",
-				() => {
-					scheduleRender(
-						true,
-					);
-				},
-			);
+			window.addEventListener("resize", () => {
+				scheduleRender(true);
+			});
 
-			source.addEventListener(
-				"open",
-				() => {
-					const selectedOption =
-						nodeSelect.options[
-							nodeSelect.selectedIndex
-						];
+			source.addEventListener("open", () => {
+				const selectedOption =
+					nodeSelect.options[nodeSelect.selectedIndex];
 
-					const nodeName =
-						selectedOption
-							? selectedOption.textContent.trim()
-							: nodeSelect.value;
+				const nodeName = selectedOption
+					? selectedOption.textContent.trim()
+					: nodeSelect.value;
 
-					updateStatus(
-						"Streaming logs from " +
-							nodeName +
-							"...",
-					);
-				},
-			);
+				updateStatus("Streaming logs from " + nodeName + "...");
+			});
 
-			source.addEventListener(
-				"logs",
-				(event) => {
-					let incoming;
+			source.addEventListener("logs", (event) => {
+				let incoming;
 
-					try {
-						incoming =
-							JSON.parse(
-								event.data,
-							);
-					} catch (error) {
-						console.error(
-							"Failed to parse Explorer logs:",
-							error,
-						);
+				try {
+					incoming = JSON.parse(event.data);
+				} catch (error) {
+					console.error("Failed to parse Explorer logs:", error);
+					return;
+				}
 
-						return;
+				if (!Array.isArray(incoming)) {
+					console.error("Invalid Explorer logs payload:", incoming);
+					return;
+				}
+
+				const uniqueIncoming = [];
+
+				for (const log of incoming) {
+					const key = logKey(log);
+
+					if (knownLogKeys.has(key)) {
+						continue;
 					}
 
-					if (
-						!Array.isArray(
-							incoming,
-						)
-					) {
-						console.error(
-							"Invalid Explorer logs payload:",
-							incoming,
-						);
+					knownLogKeys.add(key);
+					uniqueIncoming.push(log);
+				}
 
-						return;
-					}
+				if (uniqueIncoming.length === 0) {
+					return;
+				}
 
-					const uniqueIncoming =
-						[];
+				logs.push(...uniqueIncoming);
 
-					for (
-						const log of
-							incoming
-					) {
-						const key =
-							logKey(
-								log,
-							);
+				scheduleRender();
 
-						if (
-							knownLogKeys.has(
-								key,
-							)
-						) {
-							continue;
-						}
+				updateStatus(
+					"Streaming logs — " +
+						logs.length +
+						" matches",
+				);
+			});
 
-						knownLogKeys.add(
-							key,
-						);
+			source.addEventListener("node_done", () => {
+				updateStatus(
+					"Finishing stream — " +
+						logs.length +
+						" matches",
+				);
+			});
 
-						uniqueIncoming.push(
-							log,
-						);
-					}
+			source.addEventListener("node_error", (event) => {
+				let result;
 
-					if (
-						uniqueIncoming.length ===
-							0
-					) {
-						return;
-					}
+				try {
+					result = JSON.parse(event.data);
+				} catch (error) {
+					console.error("Failed to parse node error:", error);
+					return;
+				}
 
-					logs.push(
-						...uniqueIncoming,
-					);
+				console.error(
+					"Collector stream failed:",
+					result.node_name || result.node_id,
+					result.message,
+				);
 
-					scheduleRender();
-
-					updateStatus(
-						"Streaming logs — " +
-							logs.length +
-							" matches",
-					);
-				},
-			);
-
-			source.addEventListener(
-				"node_done",
-				() => {
-					updateStatus(
-						"Finishing stream — " +
-							logs.length +
-							" matches",
-					);
-				},
-			);
-
-			source.addEventListener(
-				"node_error",
-				(event) => {
-					let result;
-
-					try {
-						result =
-							JSON.parse(
-								event.data,
-							);
-					} catch (error) {
-						console.error(
-							"Failed to parse node error:",
-							error,
-						);
-
-						return;
-					}
-
-					console.error(
-						"Collector stream failed:",
-						result.node_name ||
-							result.node_id,
+				updateStatus(
+					"Node stream error — " +
 						result.message,
-					);
+				);
+			});
 
-					updateStatus(
-						"Node stream error — " +
-							result.message,
-					);
-				},
-			);
+			source.addEventListener("done", (event) => {
+				let result;
 
-			source.addEventListener(
-				"done",
-				(event) => {
-					let result;
-
-					try {
-						result =
-							JSON.parse(
-								event.data,
-							);
-					} catch (error) {
-						console.error(
-							"Failed to parse done event:",
-							error,
-						);
-
-						source.close();
-
-						return;
-					}
+				try {
+					result = JSON.parse(event.data);
+				} catch (error) {
+					console.error("Failed to parse done event:", error);
 
 					source.close();
 
-					if (
-						logs.length ===
-							0
-					) {
-						const row =
-							document.createElement(
-								"tr",
-							);
+					return;
+				}
 
-						row.id =
-							"explorer-empty-row";
+				const streamEndTime = performance.now();
+				const totalStreamTime = streamEndTime - streamStartTime;
 
-						const cell =
-							document.createElement(
-								"td",
-							);
+				source.close();
 
-						cell.colSpan =
-							7;
+				if (logs.length === 0) {
+					const row = document.createElement("tr");
 
-						cell.className =
-							"explorer-empty";
+					row.id = "explorer-empty-row";
 
-						cell.textContent =
-							"No logs found.";
+					const cell = document.createElement("td");
 
-						row.append(
-							cell,
-						);
+					cell.colSpan = 7;
+					cell.className = "explorer-empty";
+					cell.textContent = "No logs found.";
 
-						body.replaceChildren(
-							row,
-						);
+					row.append(cell);
+					body.replaceChildren(row);
 
-						renderedStart =
-							-1;
+					renderedStart = -1;
+					renderedEnd = -1;
+				} else {
+					scheduleRender(true);
+				}
 
-						renderedEnd =
-							-1;
-					} else {
-						scheduleRender(
-							true,
-						);
-					}
-
-					if (
-						result.failed_nodes >
-							0
-					) {
-						updateStatus(
-							"Stream failed — " +
-								result.matches +
-								" matches loaded",
-						);
-
-						return;
-					}
-
+				if (result.failed_nodes > 0) {
 					updateStatus(
-						"Complete — " +
+						"Stream failed — " +
 							result.matches +
-							" matches",
+							" matches loaded in " +
+							formatDuration(totalStreamTime),
 					);
-				},
-			);
 
-			source.onerror =
-				() => {
-					if (
-						source.readyState ===
-							EventSource.CLOSED
-					) {
-						return;
-					}
+					return;
+				}
 
-					if (
-						source.readyState ===
-							EventSource.CONNECTING
-					) {
-						updateStatus(
-							"Explorer stream disconnected — reconnecting...",
-						);
+				updateStatus(
+					"Complete — " +
+						result.matches +
+						" matches in " +
+						formatDuration(totalStreamTime),
+				);
+			});
 
-						return;
-					}
+			source.onerror = () => {
+				if (source.readyState === EventSource.CLOSED) {
+					return;
+				}
 
+				if (source.readyState === EventSource.CONNECTING) {
 					updateStatus(
-						"Explorer stream connection error.",
+						"Explorer stream disconnected — reconnecting...",
 					);
-				};
 
-			window.addEventListener(
-				"beforeunload",
-				() => {
-					source.close();
-				},
-			);
+					return;
+				}
+
+				updateStatus("Explorer stream connection error.");
+			};
+
+			window.addEventListener("beforeunload", () => {
+				source.close();
+			});
 		})();
 	</script>
 }

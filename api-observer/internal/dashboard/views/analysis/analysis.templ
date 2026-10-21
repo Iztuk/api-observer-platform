@@ -231,25 +231,16 @@ templ AnalysisStreamScript() {
 	<script>
 		(() => {
 			const form = document.getElementById("analysis-form");
-
 			const body = document.getElementById("analysis-log-body");
-
 			const container = document.getElementById("analysis-table-container");
-
 			const results = document.getElementById("analysis-results");
-
 			const editorSection = document.getElementById("analysis-editor");
-
 			const rulesEditorElement = document.getElementById(
 				"analysis-rules-editor",
 			);
-
 			const rulesInput = document.getElementById("analysis-rules");
-
 			const logsTab = document.getElementById("analysis-logs-tab");
-
 			const rulesTab = document.getElementById("analysis-rules-tab");
-
 			const statusElement = document.getElementById("analysis-stream-status");
 
 			if (
@@ -290,21 +281,24 @@ templ AnalysisStreamScript() {
 			const expandedRows = new Set();
 
 			let controller = null;
-
 			let rulesEditor = null;
 
 			let completedNodes = 0;
-
 			let failedNodes = 0;
 
 			let renderPending = false;
+
+			/*
+			 * Tracks total elapsed stream time from the
+			 * frontend's point of view.
+			 */
+			let streamStartTime = null;
 
 			/*
 			 * Range currently represented by actual
 			 * DOM rows.
 			 */
 			let renderedStart = -1;
-
 			let renderedEnd = -1;
 
 			const initializeRulesEditor = () => {
@@ -314,9 +308,7 @@ templ AnalysisStreamScript() {
 
 				rulesEditor = window.monaco.editor.create(rulesEditorElement, {
 					value: rulesInput.value,
-
 					language: "yaml",
-
 					automaticLayout: true,
 
 					minimap: {
@@ -324,9 +316,7 @@ templ AnalysisStreamScript() {
 					},
 
 					scrollBeyondLastLine: false,
-
 					wordWrap: "off",
-
 					tabSize: 2,
 				});
 
@@ -345,25 +335,18 @@ templ AnalysisStreamScript() {
 
 			const showResults = () => {
 				results.hidden = false;
-
 				editorSection.hidden = true;
 
 				if (logsTab) {
 					logsTab.classList.add("active");
-
 					logsTab.setAttribute("aria-selected", "true");
 				}
 
 				if (rulesTab) {
 					rulesTab.classList.remove("active");
-
 					rulesTab.setAttribute("aria-selected", "false");
 				}
 
-				/*
-				 * The table may have changed size while
-				 * hidden. Recalculate its virtual window.
-				 */
 				requestAnimationFrame(() => {
 					scheduleRender(true);
 				});
@@ -371,18 +354,15 @@ templ AnalysisStreamScript() {
 
 			const showEditor = () => {
 				results.hidden = true;
-
 				editorSection.hidden = false;
 
 				if (logsTab) {
 					logsTab.classList.remove("active");
-
 					logsTab.setAttribute("aria-selected", "false");
 				}
 
 				if (rulesTab) {
 					rulesTab.classList.add("active");
-
 					rulesTab.setAttribute("aria-selected", "true");
 				}
 
@@ -409,6 +389,21 @@ templ AnalysisStreamScript() {
 				}
 
 				statusElement.textContent = message;
+			};
+
+			const formatDuration = (milliseconds) => {
+				if (milliseconds < 1000) {
+					return milliseconds.toFixed(0) + " ms";
+				}
+
+				if (milliseconds < 60000) {
+					return (milliseconds / 1000).toFixed(2) + " s";
+				}
+
+				const minutes = Math.floor(milliseconds / 60000);
+				const seconds = (milliseconds % 60000) / 1000;
+
+				return minutes + "m " + seconds.toFixed(2) + "s";
 			};
 
 			const createCell = (value) => {
@@ -438,13 +433,11 @@ templ AnalysisStreamScript() {
 				const labelElement = document.createElement("span");
 
 				labelElement.className = "analysis-detail-label";
-
 				labelElement.textContent = label;
 
 				const valueElement = document.createElement("span");
 
 				valueElement.className = "analysis-detail-value";
-
 				valueElement.textContent = value ?? "";
 
 				field.append(labelElement, valueElement);
@@ -467,14 +460,17 @@ templ AnalysisStreamScript() {
 
 				fields.append(
 					createDetailField("Title", finding.title || "Finding"),
-
 					createDetailField("Severity", finding.severity || "Unknown"),
-
 					createDetailField("Message", finding.message || ""),
 				);
 
 				if (Array.isArray(finding.tags) && finding.tags.length > 0) {
-					fields.append(createDetailField("Tags", finding.tags.join(", ")));
+					fields.append(
+						createDetailField(
+							"Tags",
+							finding.tags.join(", "),
+						),
+					);
 				}
 
 				findingElement.append(fields);
@@ -495,7 +491,9 @@ templ AnalysisStreamScript() {
 
 				details.className = "analysis-log-details";
 
-				const findings = Array.isArray(log.findings) ? log.findings : [];
+				const findings = Array.isArray(log.findings)
+					? log.findings
+					: [];
 
 				const findingsSection = document.createElement("div");
 
@@ -504,7 +502,6 @@ templ AnalysisStreamScript() {
 				const title = document.createElement("div");
 
 				title.className = "analysis-findings-title";
-
 				title.textContent = "Findings (" + findings.length + ")";
 
 				findingsSection.append(title);
@@ -513,20 +510,19 @@ templ AnalysisStreamScript() {
 					const empty = document.createElement("div");
 
 					empty.className = "analysis-findings-empty";
-
 					empty.textContent = "No findings for this log.";
 
 					findingsSection.append(empty);
 				} else {
 					for (const finding of findings) {
-						findingsSection.append(createFinding(finding));
+						findingsSection.append(
+							createFinding(finding),
+						);
 					}
 				}
 
 				details.append(findingsSection);
-
 				cell.append(details);
-
 				detailsRow.append(cell);
 
 				return detailsRow;
@@ -540,7 +536,6 @@ templ AnalysisStreamScript() {
 				const cell = document.createElement("td");
 
 				cell.colSpan = 8;
-
 				cell.style.height = Math.max(0, height) + "px";
 
 				row.append(cell);
@@ -549,21 +544,23 @@ templ AnalysisStreamScript() {
 			};
 
 			const createLogRow = (log, index) => {
-				const findings = Array.isArray(log.findings) ? log.findings : [];
+				const findings = Array.isArray(log.findings)
+					? log.findings
+					: [];
 
 				const expanded = expandedRows.has(index);
 
 				const row = document.createElement("tr");
 
 				row.className = "analysis-log-row";
-
 				row.dataset.index = String(index);
-
 				row.tabIndex = 0;
 
 				row.setAttribute("role", "button");
-
-				row.setAttribute("aria-expanded", expanded ? "true" : "false");
+				row.setAttribute(
+					"aria-expanded",
+					expanded ? "true" : "false",
+				);
 
 				const timestamp = log.timestamp
 					? new Date(log.timestamp).toLocaleString()
@@ -576,26 +573,18 @@ templ AnalysisStreamScript() {
 				const rowToggle = document.createElement("span");
 
 				rowToggle.className = "analysis-row-toggle";
-
 				rowToggle.textContent = expanded ? "⌄" : "›";
 
 				toggleCell.append(rowToggle);
 
 				row.append(
 					toggleCell,
-
 					createCell(timestamp),
-
 					createCell(log.node_name || ""),
-
 					createCell(log.type || ""),
-
 					createCell(log.method || ""),
-
 					createCell(log.path || ""),
-
 					createCell(log.status ?? ""),
-
 					createCell(findings.length),
 				);
 
@@ -606,19 +595,16 @@ templ AnalysisStreamScript() {
 						expandedRows.add(index);
 					}
 
-					/*
-					 * Expansion changes the DOM
-					 * structure, so force the
-					 * current virtual range to
-					 * rebuild.
-					 */
 					scheduleRender(true);
 				};
 
 				row.addEventListener("click", toggleDetails);
 
 				row.addEventListener("keydown", (event) => {
-					if (event.key === "Enter" || event.key === " ") {
+					if (
+						event.key === "Enter" ||
+						event.key === " "
+					) {
 						event.preventDefault();
 
 						toggleDetails();
@@ -630,18 +616,20 @@ templ AnalysisStreamScript() {
 
 			const getRenderWindow = () => {
 				const scrollTop = container.scrollTop;
-
 				const viewportHeight = container.clientHeight;
-
 				const visibleStart = Math.floor(scrollTop / rowHeight);
-
 				const visibleCount = Math.ceil(viewportHeight / rowHeight);
 
-				const startIndex = Math.max(0, visibleStart - overscan);
+				const startIndex = Math.max(
+					0,
+					visibleStart - overscan,
+				);
 
 				const endIndex = Math.min(
 					logs.length,
-					visibleStart + visibleCount + overscan,
+					visibleStart +
+						visibleCount +
+						overscan,
 				);
 
 				return {
@@ -650,7 +638,10 @@ templ AnalysisStreamScript() {
 				};
 			};
 
-			const updateSpacerHeights = (startIndex, endIndex) => {
+			const updateSpacerHeights = (
+				startIndex,
+				endIndex,
+			) => {
 				const topSpacer = body.querySelector(
 					".analysis-spacer-row[data-position='top']",
 				);
@@ -659,106 +650,158 @@ templ AnalysisStreamScript() {
 					".analysis-spacer-row[data-position='bottom']",
 				);
 
-				const topHeight = startIndex * rowHeight;
+				const topHeight =
+					startIndex * rowHeight;
 
-				const bottomHeight = Math.max(0, (logs.length - endIndex) * rowHeight);
+				const bottomHeight = Math.max(
+					0,
+					(logs.length - endIndex) *
+						rowHeight,
+				);
 
-				if (topSpacer && topSpacer.firstElementChild) {
+				if (
+					topSpacer &&
+					topSpacer.firstElementChild
+				) {
 					topSpacer.firstElementChild.style.height =
-						Math.max(0, topHeight) + "px";
+						Math.max(
+							0,
+							topHeight,
+						) + "px";
 				}
 
-				if (bottomSpacer && bottomSpacer.firstElementChild) {
+				if (
+					bottomSpacer &&
+					bottomSpacer.firstElementChild
+				) {
 					bottomSpacer.firstElementChild.style.height =
-						Math.max(0, bottomHeight) + "px";
+						Math.max(
+							0,
+							bottomHeight,
+						) + "px";
 				}
 			};
 
-			const render = (force = false) => {
+			const render = (
+				force = false,
+			) => {
 				renderPending = false;
 
 				if (logs.length === 0) {
 					return;
 				}
 
-				const { startIndex, endIndex } = getRenderWindow();
+				const {
+					startIndex,
+					endIndex,
+				} = getRenderWindow();
 
-				/*
-				 * This is what prevents streaming
-				 * batches from causing hovered rows
-				 * to flash.
-				 *
-				 * If the current virtual range is
-				 * unchanged, preserve all visible DOM
-				 * nodes and only update spacer height.
-				 */
 				if (
 					!force &&
 					startIndex === renderedStart &&
 					endIndex === renderedEnd
 				) {
-					updateSpacerHeights(startIndex, endIndex);
+					updateSpacerHeights(
+						startIndex,
+						endIndex,
+					);
 
 					return;
 				}
 
-				const topHeight = startIndex * rowHeight;
+				const topHeight =
+					startIndex * rowHeight;
 
-				const bottomHeight = Math.max(0, (logs.length - endIndex) * rowHeight);
+				const bottomHeight =
+					Math.max(
+						0,
+						(
+							logs.length -
+							endIndex
+						) *
+							rowHeight,
+					);
 
-				const fragment = document.createDocumentFragment();
+				const fragment =
+					document.createDocumentFragment();
 
-				/*
-				 * Keep spacer rows present even when
-				 * their height is zero.
-				 *
-				 * That allows future streamed batches
-				 * to update them without rebuilding
-				 * the visible rows.
-				 */
-				const topSpacer = createSpacerRow(topHeight);
+				const topSpacer =
+					createSpacerRow(
+						topHeight,
+					);
 
-				topSpacer.dataset.position = "top";
+				topSpacer.dataset.position =
+					"top";
 
-				fragment.append(topSpacer);
+				fragment.append(
+					topSpacer,
+				);
 
-				for (let index = startIndex; index < endIndex; index++) {
-					const log = logs[index];
+				for (
+					let index = startIndex;
+					index < endIndex;
+					index++
+				) {
+					const log =
+						logs[index];
 
-					fragment.append(createLogRow(log, index));
+					fragment.append(
+						createLogRow(
+							log,
+							index,
+						),
+					);
 
-					/*
-					 * Details aren't created at all
-					 * unless this row is expanded.
-					 */
-					if (expandedRows.has(index)) {
-						fragment.append(createDetailsRow(log));
+					if (
+						expandedRows.has(
+							index,
+						)
+					) {
+						fragment.append(
+							createDetailsRow(
+								log,
+							),
+						);
 					}
 				}
 
-				const bottomSpacer = createSpacerRow(bottomHeight);
+				const bottomSpacer =
+					createSpacerRow(
+						bottomHeight,
+					);
 
-				bottomSpacer.dataset.position = "bottom";
+				bottomSpacer.dataset.position =
+					"bottom";
 
-				fragment.append(bottomSpacer);
+				fragment.append(
+					bottomSpacer,
+				);
 
-				body.replaceChildren(fragment);
+				body.replaceChildren(
+					fragment,
+				);
 
-				renderedStart = startIndex;
+				renderedStart =
+					startIndex;
 
-				renderedEnd = endIndex;
+				renderedEnd =
+					endIndex;
 			};
 
-			const scheduleRender = (force = false) => {
+			const scheduleRender = (
+				force = false,
+			) => {
 				if (renderPending) {
 					return;
 				}
 
 				renderPending = true;
 
-				requestAnimationFrame(() => {
-					render(force);
-				});
+				requestAnimationFrame(
+					() => {
+						render(force);
+					},
+				);
 			};
 
 			const clearResults = () => {
@@ -767,29 +810,34 @@ templ AnalysisStreamScript() {
 				expandedRows.clear();
 
 				renderedStart = -1;
-
 				renderedEnd = -1;
 
 				container.scrollTop = 0;
 
-				const row = document.createElement("tr");
+				const row =
+					document.createElement(
+						"tr",
+					);
 
-				row.id = "analysis-empty-row";
+				row.id =
+					"analysis-empty-row";
 
-				const cell = document.createElement("td");
+				const cell =
+					document.createElement(
+						"td",
+					);
 
 				cell.colSpan = 8;
+				cell.className =
+					"analysis-empty";
 
-				cell.className = "analysis-empty";
-
-				cell.textContent = "Loading logs...";
+				cell.textContent =
+					"Loading logs...";
 
 				row.append(cell);
-
 				body.replaceChildren(row);
 
 				completedNodes = 0;
-
 				failedNodes = 0;
 			};
 
@@ -813,34 +861,52 @@ templ AnalysisStreamScript() {
 				controller = null;
 			};
 
-			const handleSSEEvent = (eventName, data) => {
+			const handleSSEEvent = (
+				eventName,
+				data,
+			) => {
 				switch (eventName) {
 					case "logs": {
 						let incoming;
 
 						try {
-							incoming = JSON.parse(data);
+							incoming =
+								JSON.parse(
+									data,
+								);
 						} catch (error) {
-							console.error("Failed to parse Analysis logs:", error);
+							console.error(
+								"Failed to parse Analysis logs:",
+								error,
+							);
 
 							break;
 						}
 
-						if (!Array.isArray(incoming)) {
-							console.error("Invalid Analysis logs payload:", incoming);
+						if (
+							!Array.isArray(
+								incoming,
+							)
+						) {
+							console.error(
+								"Invalid Analysis logs payload:",
+								incoming,
+							);
 
 							break;
 						}
 
-						/*
-						 * Store data rather than creating
-						 * DOM nodes for every record.
-						 */
-						logs.push(...incoming);
+						logs.push(
+							...incoming,
+						);
 
 						scheduleRender();
 
-						updateStatus("Analyzing logs — " + logs.length + " matches");
+						updateStatus(
+							"Analyzing logs — " +
+								logs.length +
+								" matches",
+						);
 
 						break;
 					}
@@ -849,7 +915,9 @@ templ AnalysisStreamScript() {
 						completedNodes++;
 
 						const nodeLabel =
-							completedNodes === 1 ? "node complete" : "nodes complete";
+							completedNodes === 1
+								? "node complete"
+								: "nodes complete";
 
 						updateStatus(
 							"Analyzing logs — " +
@@ -867,9 +935,15 @@ templ AnalysisStreamScript() {
 						let result;
 
 						try {
-							result = JSON.parse(data);
+							result =
+								JSON.parse(
+									data,
+								);
 						} catch (error) {
-							console.error("Failed to parse Analysis node error:", error);
+							console.error(
+								"Failed to parse Analysis node error:",
+								error,
+							);
 
 							break;
 						}
@@ -878,11 +952,15 @@ templ AnalysisStreamScript() {
 
 						console.error(
 							"Analysis stream failed:",
-							result.node_name || result.node_id,
+							result.node_name ||
+								result.node_id,
 							result.message,
 						);
 
-						const errorLabel = failedNodes === 1 ? "node error" : "node errors";
+						const errorLabel =
+							failedNodes === 1
+								? "node error"
+								: "node errors";
 
 						updateStatus(
 							"Analyzing logs — " +
@@ -900,38 +978,67 @@ templ AnalysisStreamScript() {
 						let result;
 
 						try {
-							result = JSON.parse(data);
+							result =
+								JSON.parse(
+									data,
+								);
 						} catch (error) {
-							console.error("Failed to parse Analysis done event:", error);
+							console.error(
+								"Failed to parse Analysis done event:",
+								error,
+							);
 
 							break;
 						}
 
-						if (logs.length === 0) {
-							const row = document.createElement("tr");
+						const streamEndTime =
+							performance.now();
 
-							row.id = "analysis-empty-row";
+						const totalStreamTime =
+							streamStartTime === null
+								? 0
+								: streamEndTime -
+									streamStartTime;
 
-							const cell = document.createElement("td");
+						if (
+							logs.length === 0
+						) {
+							const row =
+								document.createElement(
+									"tr",
+								);
+
+							row.id =
+								"analysis-empty-row";
+
+							const cell =
+								document.createElement(
+									"td",
+								);
 
 							cell.colSpan = 8;
+							cell.className =
+								"analysis-empty";
 
-							cell.className = "analysis-empty";
-
-							cell.textContent = "No logs found.";
+							cell.textContent =
+								"No logs found.";
 
 							row.append(cell);
 
-							body.replaceChildren(row);
+							body.replaceChildren(
+								row,
+							);
 
 							renderedStart = -1;
-
 							renderedEnd = -1;
 						} else {
 							scheduleRender();
 						}
 
-						const nodeLabel = result.completed_nodes === 1 ? "node" : "nodes";
+						const nodeLabel =
+							result.completed_nodes === 1
+								? "node"
+								: "nodes";
 
 						let message =
 							"Complete — " +
@@ -939,67 +1046,130 @@ templ AnalysisStreamScript() {
 							" matches across " +
 							result.completed_nodes +
 							" " +
-							nodeLabel;
+							nodeLabel +
+							" in " +
+							formatDuration(
+								totalStreamTime,
+							);
 
-						if (result.failed_nodes > 0) {
-							message += " (" + result.failed_nodes + " failed)";
+						if (
+							result.failed_nodes >
+							0
+						) {
+							message +=
+								" (" +
+								result.failed_nodes +
+								" failed)";
 						}
 
-						updateStatus(message);
+						updateStatus(
+							message,
+						);
 
 						break;
 					}
 				}
 			};
 
-			const consumeSSEStream = async (response) => {
+			const consumeSSEStream = async (
+				response,
+			) => {
 				if (!response.body) {
-					throw new Error("streaming response body is unavailable");
+					throw new Error(
+						"streaming response body is unavailable",
+					);
 				}
 
-				const reader = response.body.getReader();
+				const reader =
+					response.body.getReader();
 
-				const decoder = new TextDecoder();
+				const decoder =
+					new TextDecoder();
 
 				let buffer = "";
 
 				while (true) {
-					const { value, done } = await reader.read();
+					const {
+						value,
+						done,
+					} =
+						await reader.read();
 
 					if (done) {
 						break;
 					}
 
-					buffer += decoder.decode(value, {
-						stream: true,
-					});
+					buffer +=
+						decoder.decode(
+							value,
+							{
+								stream: true,
+							},
+						);
 
-					const events = buffer.split("\n\n");
+					const events =
+						buffer.split(
+							"\n\n",
+						);
 
-					buffer = events.pop() ?? "";
+					buffer =
+						events.pop() ??
+						"";
 
-					for (const rawEvent of events) {
-						if (!rawEvent.trim()) {
+					for (
+						const rawEvent of
+							events
+					) {
+						if (
+							!rawEvent.trim()
+						) {
 							continue;
 						}
 
-						let eventName = "message";
+						let eventName =
+							"message";
 
 						let data = "";
 
-						for (const line of rawEvent.split("\n")) {
-							if (line.startsWith("event:")) {
-								eventName = line.slice(6).trim();
+						for (
+							const line of
+								rawEvent.split(
+									"\n",
+								)
+						) {
+							if (
+								line.startsWith(
+									"event:",
+								)
+							) {
+								eventName =
+									line.
+										slice(
+											6,
+										).
+										trim();
 
 								continue;
 							}
 
-							if (line.startsWith("data:")) {
-								data += line.slice(5).trim();
+							if (
+								line.startsWith(
+									"data:",
+								)
+							) {
+								data +=
+									line.
+										slice(
+											5,
+										).
+										trim();
 							}
 						}
 
-						handleSSEEvent(eventName, data);
+						handleSSEEvent(
+							eventName,
+							data,
+						);
 					}
 				}
 			};
@@ -1012,74 +1182,115 @@ templ AnalysisStreamScript() {
 				showResults();
 
 				if (rulesEditor) {
-					rulesInput.value = rulesEditor.getValue();
+					rulesInput.value =
+						rulesEditor.getValue();
 				}
 
-				controller = new AbortController();
+				controller =
+					new AbortController();
 
-				const currentController = controller;
+				const currentController =
+					controller;
 
-				const formData = new FormData(form);
+				const formData =
+					new FormData(
+						form,
+					);
+
+				/*
+				 * Start the timer immediately before the
+				 * frontend begins the HTTP request.
+				 */
+				streamStartTime =
+					performance.now();
 
 				try {
-					const response = await fetch("/analysis/logs", {
-						method: "POST",
-
-						body: formData,
-
-						signal: currentController.signal,
-					});
+					const response =
+						await fetch(
+							"/analysis/logs",
+							{
+								method: "POST",
+								body: formData,
+								signal:
+									currentController.signal,
+							},
+						);
 
 					if (!response.ok) {
-						const message = await response.text();
+						const message =
+							await response.text();
 
 						throw new Error(
-							"Analysis request failed (" + response.status + "): " + message,
+							"Analysis request failed (" +
+								response.status +
+								"): " +
+								message,
 						);
 					}
 
-					updateStatus("Analyzing logs...");
+					updateStatus(
+						"Analyzing logs...",
+					);
 
-					await consumeSSEStream(response);
+					await consumeSSEStream(
+						response,
+					);
 				} catch (error) {
-					if (error.name === "AbortError") {
+					if (
+						error.name ===
+						"AbortError"
+					) {
 						return;
 					}
 
-					console.error("Analysis stream failed:", error);
+					console.error(
+						"Analysis stream failed:",
+						error,
+					);
 
 					updateStatus(
-						error instanceof Error ? error.message : "Analysis stream failed.",
+						error instanceof Error
+							? error.message
+							: "Analysis stream failed.",
 					);
 				} finally {
-					/*
-					 * Do not clear a newer controller
-					 * if another analysis was started
-					 * before this one finished.
-					 */
-					if (controller === currentController) {
+					if (
+						controller ===
+						currentController
+					) {
 						controller = null;
 					}
 				}
 			};
 
-			form.addEventListener("submit", (event) => {
-				event.preventDefault();
+			form.addEventListener(
+				"submit",
+				(event) => {
+					event.preventDefault();
 
-				startStream();
-			});
+					startStream();
+				},
+			);
 
-			window.addEventListener("resize", () => {
-				scheduleRender(true);
-			});
+			window.addEventListener(
+				"resize",
+				() => {
+					scheduleRender(
+						true,
+					);
+				},
+			);
 
-			window.addEventListener("beforeunload", () => {
-				closeStream();
+			window.addEventListener(
+				"beforeunload",
+				() => {
+					closeStream();
 
-				if (rulesEditor) {
-					rulesEditor.dispose();
-				}
-			});
+					if (rulesEditor) {
+						rulesEditor.dispose();
+					}
+				},
+			);
 		})();
 	</script>
 }
