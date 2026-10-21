@@ -2,11 +2,18 @@ package explorer
 
 import "api-observer/internal/dashboard/views"
 
+type NodeOption struct {
+	ID   string
+	Name string
+}
+
 templ ExplorerPage(
 	title string,
 	queryString string,
 	start string,
 	end string,
+	nodes []NodeOption,
+	selectedNodeID string,
 ) {
 	@views.Layout(title) {
 		<link
@@ -17,6 +24,8 @@ templ ExplorerPage(
 			queryString,
 			start,
 			end,
+			nodes,
+			selectedNodeID,
 		)
 		@ExplorerStreamScript()
 	}
@@ -26,6 +35,8 @@ templ ExplorerPageContent(
 	queryString string,
 	start string,
 	end string,
+	nodes []NodeOption,
+	selectedNodeID string,
 ) {
 	<div class="explorer-page">
 		<form
@@ -123,6 +134,36 @@ templ ExplorerPageContent(
 							value={ end }
 						/>
 					</div>
+
+					<div class="explorer-filter">
+						<label for="explorer-node">
+							Node
+						</label>
+						<select
+							id="explorer-node"
+							name="node"
+							disabled?={ len(nodes) == 0 }
+						>
+							if len(nodes) == 0 {
+								<option value="">
+									No connected nodes
+								</option>
+							} else {
+								for _, node := range nodes {
+									<option
+										value={ node.ID }
+										selected?={ node.ID == selectedNodeID }
+									>
+										if node.Name != "" {
+											{ node.Name }
+										} else {
+											{ node.ID }
+										}
+									</option>
+								}
+							}
+						</select>
+					</div>
 				</div>
 			</details>
 		</form>
@@ -132,7 +173,11 @@ templ ExplorerPageContent(
 				id="explorer-stream-status"
 				class="explorer-stream-status"
 			>
-				Connecting...
+				if len(nodes) == 0 {
+					No connected nodes.
+				} else {
+					Connecting...
+				}
 			</div>
 
 			<div
@@ -144,7 +189,6 @@ templ ExplorerPageContent(
 						<tr>
 							<th></th>
 							<th>Timestamp</th>
-							<th>Node</th>
 							<th>Type</th>
 							<th>Method</th>
 							<th>Path</th>
@@ -156,10 +200,14 @@ templ ExplorerPageContent(
 					<tbody id="explorer-log-body">
 						<tr id="explorer-empty-row">
 							<td
-								colspan="8"
+								colspan="7"
 								class="explorer-empty"
 							>
-								Loading logs...
+								if len(nodes) == 0 {
+									No connected nodes.
+								} else {
+									Loading logs...
+								}
 							</td>
 						</tr>
 					</tbody>
@@ -192,6 +240,11 @@ templ ExplorerStreamScript() {
 					"explorer-stream-status",
 				);
 
+			const nodeSelect =
+				document.getElementById(
+					"explorer-node",
+				);
+
 			if (
 				!form ||
 				!body ||
@@ -200,6 +253,24 @@ templ ExplorerStreamScript() {
 				return;
 			}
 
+			/*
+			 * There is nothing to stream without a
+			 * selected connected node.
+			 */
+			if (
+				!nodeSelect ||
+				!nodeSelect.value
+			) {
+				return;
+			}
+
+			/*
+			 * The form is submitted ONLY through the
+			 * Search button / normal form submission.
+			 *
+			 * Changing the node dropdown merely changes
+			 * which node value will be submitted.
+			 */
 			const params =
 				new URLSearchParams(
 					new FormData(
@@ -218,40 +289,28 @@ templ ExplorerStreamScript() {
 			 */
 			const rowHeight = 48;
 
-			/*
-			 * Number of rows rendered above and below
-			 * the visible viewport.
-			 */
 			const overscan = 20;
 
 			/*
-			 * Complete result set.
+			 * Single-node stream.
 			 *
-			 * Only the visible portion of this array is
-			 * represented in the DOM.
+			 * Collector batches are already ordered, so
+			 * they can simply be appended.
 			 */
 			const logs = [];
 
-			/*
-			 * Expanded state is stored independently of
-			 * the DOM so it survives virtual scrolling.
-			 */
-			const expandedRows =
+			const knownLogKeys =
 				new Set();
 
-			let completedNodes = 0;
-			let failedNodes = 0;
+			const expandedRows =
+				new Set();
 
 			let renderPending =
 				false;
 
-			/*
-			 * Tracks the virtual range currently represented
-			 * by real DOM elements.
-			 *
-			 * This prevents streamed batches from recreating
-			 * visible rows if the window hasn't changed.
-			 */
+			let forceRenderPending =
+				false;
+
 			let renderedStart = -1;
 			let renderedEnd = -1;
 
@@ -264,6 +323,17 @@ templ ExplorerStreamScript() {
 
 				statusElement.textContent =
 					message;
+			};
+
+			const logKey = (
+				log,
+			) => {
+				return [
+					log.node_id || "",
+					log.request_id || "",
+					log.type || "",
+					log.timestamp || "",
+				].join("|");
 			};
 
 			const createCell = (
@@ -286,11 +356,6 @@ templ ExplorerStreamScript() {
 					cell.textContent =
 						text;
 
-					/*
-					 * Native browser tooltip allows
-					 * truncated values to be viewed
-					 * without changing row height.
-					 */
 					cell.title =
 						text;
 				}
@@ -424,7 +489,7 @@ templ ExplorerStreamScript() {
 						"td",
 					);
 
-				cell.colSpan = 8;
+				cell.colSpan = 7;
 
 				const details =
 					document.createElement(
@@ -527,7 +592,7 @@ templ ExplorerStreamScript() {
 						"td",
 					);
 
-				cell.colSpan = 8;
+				cell.colSpan = 7;
 
 				cell.style.height =
 					Math.max(
@@ -553,9 +618,14 @@ templ ExplorerStreamScript() {
 						? log.findings
 						: [];
 
+				const key =
+					logKey(
+						log,
+					);
+
 				const expanded =
 					expandedRows.has(
-						index,
+						key,
 					);
 
 				const row =
@@ -570,6 +640,9 @@ templ ExplorerStreamScript() {
 					String(
 						index,
 					);
+
+				row.dataset.key =
+					key;
 
 				row.tabIndex = 0;
 
@@ -618,16 +691,14 @@ templ ExplorerStreamScript() {
 					toggle,
 				);
 
+				/*
+				 * Node column removed.
+				 */
 				row.append(
 					toggleCell,
 
 					createCell(
 						timestamp,
-					),
-
-					createCell(
-						log.node_name ||
-							"",
 					),
 
 					createCell(
@@ -659,22 +730,18 @@ templ ExplorerStreamScript() {
 					() => {
 						if (
 							expandedRows.has(
-								index,
+								key,
 							)
 						) {
 							expandedRows.delete(
-								index,
+								key,
 							);
 						} else {
 							expandedRows.add(
-								index,
+								key,
 							);
 						}
 
-						/*
-						 * Expansion changes the DOM structure,
-						 * so this render must be forced.
-						 */
 						scheduleRender(
 							true,
 						);
@@ -745,14 +812,6 @@ templ ExplorerStreamScript() {
 					};
 				};
 
-			/*
-			 * Update only the virtual padding surrounding the
-			 * existing rows.
-			 *
-			 * This is the important part for streamed data:
-			 * if the user's visible window hasn't changed,
-			 * the actual row DOM remains untouched.
-			 */
 			const updateSpacerHeights =
 				(
 					startIndex,
@@ -823,19 +882,6 @@ templ ExplorerStreamScript() {
 				} =
 					getRenderWindow();
 
-				/*
-				 * If the same virtual range is already in
-				 * the DOM, do not recreate the rows.
-				 *
-				 * Only update the virtual spacer heights.
-				 *
-				 * This prevents:
-				 *
-				 * - hover flashing
-				 * - focus loss
-				 * - native tooltip resets
-				 * - needless DOM allocation
-				 */
 				if (
 					!force &&
 					startIndex ===
@@ -868,13 +914,6 @@ templ ExplorerStreamScript() {
 				const fragment =
 					document.createDocumentFragment();
 
-				/*
-				 * Always keep both spacer rows present.
-				 *
-				 * That lets incoming SSE batches update
-				 * their heights without replacing the
-				 * visible rows.
-				 */
 				const topSpacer =
 					createSpacerRow(
 						topHeight,
@@ -891,7 +930,7 @@ templ ExplorerStreamScript() {
 					let index =
 						startIndex;
 					index <
-					endIndex;
+						endIndex;
 					index++
 				) {
 					const log =
@@ -904,14 +943,11 @@ templ ExplorerStreamScript() {
 						),
 					);
 
-					/*
-					 * Details are only created for
-					 * expanded rows currently inside
-					 * the rendered virtual window.
-					 */
 					if (
 						expandedRows.has(
-							index,
+							logKey(
+								log,
+							),
 						)
 					) {
 						fragment.append(
@@ -948,6 +984,11 @@ templ ExplorerStreamScript() {
 			const scheduleRender = (
 				force = false,
 			) => {
+				if (force) {
+					forceRenderPending =
+						true;
+				}
+
 				if (renderPending) {
 					return;
 				}
@@ -957,17 +998,19 @@ templ ExplorerStreamScript() {
 
 				requestAnimationFrame(
 					() => {
+						const shouldForce =
+							forceRenderPending;
+
+						forceRenderPending =
+							false;
+
 						render(
-							force,
+							shouldForce,
 						);
 					},
 				);
 			};
 
-			/*
-			 * Scrolling changes which virtual indexes
-			 * need to be represented in the DOM.
-			 */
 			container.addEventListener(
 				"scroll",
 				() => {
@@ -978,11 +1021,32 @@ templ ExplorerStreamScript() {
 				},
 			);
 
+			window.addEventListener(
+				"resize",
+				() => {
+					scheduleRender(
+						true,
+					);
+				},
+			);
+
 			source.addEventListener(
 				"open",
 				() => {
+					const selectedOption =
+						nodeSelect.options[
+							nodeSelect.selectedIndex
+						];
+
+					const nodeName =
+						selectedOption
+							? selectedOption.textContent.trim()
+							: nodeSelect.value;
+
 					updateStatus(
-						"Streaming logs...",
+						"Streaming logs from " +
+							nodeName +
+							"...",
 					);
 				},
 			);
@@ -1019,15 +1083,44 @@ templ ExplorerStreamScript() {
 						return;
 					}
 
-					/*
-					 * Store the data first.
-					 *
-					 * scheduleRender() will only replace
-					 * the visible DOM if the virtual window
-					 * actually changed.
-					 */
+					const uniqueIncoming =
+						[];
+
+					for (
+						const log of
+							incoming
+					) {
+						const key =
+							logKey(
+								log,
+							);
+
+						if (
+							knownLogKeys.has(
+								key,
+							)
+						) {
+							continue;
+						}
+
+						knownLogKeys.add(
+							key,
+						);
+
+						uniqueIncoming.push(
+							log,
+						);
+					}
+
+					if (
+						uniqueIncoming.length ===
+							0
+					) {
+						return;
+					}
+
 					logs.push(
-						...incoming,
+						...uniqueIncoming,
 					);
 
 					scheduleRender();
@@ -1043,21 +1136,10 @@ templ ExplorerStreamScript() {
 			source.addEventListener(
 				"node_done",
 				() => {
-					completedNodes++;
-
-					const nodeLabel =
-						completedNodes ===
-							1
-							? "node complete"
-							: "nodes complete";
-
 					updateStatus(
-						"Streaming logs — " +
+						"Finishing stream — " +
 							logs.length +
-							" matches, " +
-							completedNodes +
-							" " +
-							nodeLabel,
+							" matches",
 					);
 				},
 			);
@@ -1081,8 +1163,6 @@ templ ExplorerStreamScript() {
 						return;
 					}
 
-					failedNodes++;
-
 					console.error(
 						"Collector stream failed:",
 						result.node_name ||
@@ -1090,19 +1170,9 @@ templ ExplorerStreamScript() {
 						result.message,
 					);
 
-					const errorLabel =
-						failedNodes ===
-							1
-							? "node error"
-							: "node errors";
-
 					updateStatus(
-						"Streaming logs — " +
-							logs.length +
-							" matches, " +
-							failedNodes +
-							" " +
-							errorLabel,
+						"Node stream error — " +
+							result.message,
 					);
 				},
 			);
@@ -1148,7 +1218,7 @@ templ ExplorerStreamScript() {
 							);
 
 						cell.colSpan =
-							8;
+							7;
 
 						cell.className =
 							"explorer-empty";
@@ -1170,35 +1240,28 @@ templ ExplorerStreamScript() {
 						renderedEnd =
 							-1;
 					} else {
-						scheduleRender();
+						scheduleRender(
+							true,
+						);
 					}
-
-					const nodeLabel =
-						result.completed_nodes ===
-							1
-							? "node"
-							: "nodes";
-
-					let message =
-						"Complete — " +
-						result.matches +
-						" matches across " +
-						result.completed_nodes +
-						" " +
-						nodeLabel;
 
 					if (
 						result.failed_nodes >
 							0
 					) {
-						message +=
-							" (" +
-							result.failed_nodes +
-							" failed)";
+						updateStatus(
+							"Stream failed — " +
+								result.matches +
+								" matches loaded",
+						);
+
+						return;
 					}
 
 					updateStatus(
-						message,
+						"Complete — " +
+							result.matches +
+							" matches",
 					);
 				},
 			);
@@ -1209,10 +1272,6 @@ templ ExplorerStreamScript() {
 						source.readyState ===
 							EventSource.CLOSED
 					) {
-						updateStatus(
-							"Explorer stream closed.",
-						);
-
 						return;
 					}
 

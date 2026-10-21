@@ -186,7 +186,7 @@
 
 .explorer-filters {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 
   padding: 1rem;
@@ -368,13 +368,79 @@
   vertical-align: middle;
 }
 
-.explorer-table td,
-.explorer-table th {
+.explorer-table td:not(:first-child),
+.explorer-table th:not(:first-child) {
   max-width: 400px;
 
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.explorer-table td:first-child,
+.explorer-table th:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* =========================================
+   Table Column Widths
+========================================= */
+
+/*
+ * Expand toggle.
+ */
+.explorer-table th:nth-child(1) {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+
+  padding: 0;
+}
+
+/*
+ * Timestamp.
+ */
+.explorer-table th:nth-child(2) {
+  width: 12rem;
+}
+
+/*
+ * Type.
+ */
+.explorer-table th:nth-child(3) {
+  width: 7rem;
+}
+
+/*
+ * Method.
+ */
+.explorer-table th:nth-child(4) {
+  width: 7rem;
+}
+
+/*
+ * Path.
+ *
+ * This column gets the remaining available width.
+ */
+.explorer-table th:nth-child(5) {
+  width: auto;
+}
+
+/*
+ * Status.
+ */
+.explorer-table th:nth-child(6) {
+  width: 6rem;
+}
+
+/*
+ * Findings.
+ */
+.explorer-table th:nth-child(7) {
+  width: 6rem;
 }
 
 /* =========================================
@@ -415,12 +481,16 @@
   background: var(--hover-background);
 }
 
-.explorer-toggle-cell {
-  width: 2rem;
-  min-width: 2rem;
-  max-width: 2rem;
+/* =========================================
+   Expand Toggle Column
+========================================= */
 
-  padding-right: 0.25rem !important;
+.explorer-toggle-cell {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+
+  padding: 0 !important;
 
   text-align: center;
 }
@@ -430,8 +500,8 @@
   align-items: center;
   justify-content: center;
 
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
 
   color: var(--muted-text-color);
 
@@ -600,6 +670,12 @@
 /* =========================================
    Responsive Layout
 ========================================= */
+
+@media (max-width: 900px) {
+  .explorer-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 
 @media (max-width: 700px) {
   .explorer-page {

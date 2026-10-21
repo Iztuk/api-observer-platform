@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"api-observer/internal/audit"
@@ -20,13 +19,12 @@ import (
 
 const (
 	explorerDateTimeLayout = "2006-01-02T15:04"
-
-	explorerSSEBatchSize = 50
 )
 
 type explorerSSELog struct {
-	NodeID   string `json:"node_id"`
-	NodeName string `json:"node_name"`
+	NodeID    string `json:"node_id"`
+	NodeName  string `json:"node_name"`
+	RequestID string `json:"request_id"`
 
 	Timestamp string `json:"timestamp"`
 	Type      string `json:"type"`
@@ -62,12 +60,76 @@ func (h *Handler) ExplorerPage(
 		return
 	}
 
+	connectedNodes :=
+		getConnectedExplorerNodes(
+			h.Nodes.List(),
+		)
+
+	nodeOptions := make(
+		[]explorer.NodeOption,
+		0,
+		len(connectedNodes),
+	)
+
+	for _, node := range connectedNodes {
+
+		nodeOptions =
+			append(
+				nodeOptions,
+				explorer.NodeOption{
+					ID: node.ID,
+
+					Name: node.Name,
+				},
+			)
+	}
+
+	selectedNodeID :=
+		r.URL.Query().Get(
+			"node",
+		)
+
+	/*
+	 * If the page is opened without an explicit node,
+	 * select the first connected node.
+	 *
+	 * The form will then include this node when the
+	 * frontend opens /logs.
+	 */
+	if selectedNodeID == "" &&
+		len(connectedNodes) > 0 {
+
+		selectedNodeID =
+			connectedNodes[0].ID
+	}
+
+	/*
+	 * If the URL contains a stale/disconnected node,
+	 * fall back to the first currently connected one.
+	 */
+	if selectedNodeID != "" &&
+		findExplorerNode(
+			connectedNodes,
+			selectedNodeID,
+		) == nil {
+
+		if len(connectedNodes) > 0 {
+			selectedNodeID =
+				connectedNodes[0].ID
+		} else {
+			selectedNodeID =
+				""
+		}
+	}
+
 	if err :=
 		explorer.ExplorerPage(
 			"Explorer",
 			params.Query,
 			params.StartString,
 			params.EndString,
+			nodeOptions,
+			selectedNodeID,
 		).Render(
 			r.Context(),
 			w,
@@ -130,27 +192,36 @@ func (h *Handler) ExplorerLogs(
 		return
 	}
 
-	targetNodes := make(
-		[]*nodes.Node,
-		0,
-	)
-
-	for _, node := range h.Nodes.List() {
-
-		if !node.Connected() {
-			continue
-		}
-
-		targetNodes = append(
-			targetNodes,
-			node,
+	nodeID :=
+		r.URL.Query().Get(
+			"node",
 		)
-	}
 
-	if len(targetNodes) == 0 {
+	if nodeID == "" {
 		http.Error(
 			w,
-			"no connected nodes available",
+			"node is required",
+			http.StatusBadRequest,
+		)
+
+		return
+	}
+
+	connectedNodes :=
+		getConnectedExplorerNodes(
+			h.Nodes.List(),
+		)
+
+	node :=
+		findExplorerNode(
+			connectedNodes,
+			nodeID,
+		)
+
+	if node == nil {
+		http.Error(
+			w,
+			"selected node is not connected",
 			http.StatusServiceUnavailable,
 		)
 
@@ -183,39 +254,30 @@ func (h *Handler) ExplorerLogs(
 		context.WithCancel(
 			r.Context(),
 		)
+
 	defer cancel()
 
+	/*
+	 * Explorer now streams exactly one node.
+	 *
+	 * The collector already batches up to 100
+	 * records, so those batches can pass directly
+	 * into GetFindings.
+	 */
 	batches := make(
 		chan log.StreamLogBatch,
-		len(targetNodes)*2,
+		2,
 	)
 
-	var wg sync.WaitGroup
-
-	for _, node := range targetNodes {
-
-		wg.Add(1)
-
-		go func(
-			node *nodes.Node,
-		) {
-			defer wg.Done()
-
-			log.StreamCollectorLogs(
-				ctx,
-				node,
-				params,
-				batches,
-			)
-		}(
-			node,
-		)
-	}
-
 	go func() {
-		wg.Wait()
+		defer close(
+			batches,
+		)
 
-		close(
+		log.StreamCollectorLogs(
+			ctx,
+			node,
+			params,
 			batches,
 		)
 	}()
@@ -224,49 +286,22 @@ func (h *Handler) ExplorerLogs(
 	completedNodes := 0
 	failedNodes := 0
 
-	sseBatch := make(
-		[]explorerSSELog,
-		0,
-		explorerSSEBatchSize,
-	)
-
-	flushSSEBatch :=
-		func() error {
-			if len(sseBatch) == 0 {
-				return nil
-			}
-
-			if err :=
-				writeSSE(
-					w,
-					"logs",
-					sseBatch,
-				); err != nil {
-
-				return err
-			}
-
-			flusher.Flush()
-
-			sseBatch =
-				sseBatch[:0]
-
-			return nil
-		}
+	streamFailed := false
 
 	for batch := range batches {
 
 		if batch.Err != nil {
-			failedNodes++
+			failedNodes = 1
+			streamFailed = true
 
 			if err :=
 				writeSSE(
 					w,
 					"node_error",
 					explorerSSEError{
-						NodeID: batch.NodeID,
+						NodeID: node.ID,
 
-						NodeName: batch.NodeName,
+						NodeName: node.Name,
 
 						Message: batch.Err.Error(),
 					},
@@ -277,20 +312,20 @@ func (h *Handler) ExplorerLogs(
 
 			flusher.Flush()
 
-			continue
+			break
 		}
 
 		if batch.Done {
-			completedNodes++
+			completedNodes = 1
 
 			if err :=
 				writeSSE(
 					w,
 					"node_done",
 					map[string]string{
-						"node_id": batch.NodeID,
+						"node_id": node.ID,
 
-						"node_name": batch.NodeName,
+						"node_name": node.Name,
 					},
 				); err != nil {
 
@@ -299,31 +334,39 @@ func (h *Handler) ExplorerLogs(
 
 			flusher.Flush()
 
-			continue
+			break
 		}
 
 		if len(batch.Logs) == 0 {
 			continue
 		}
 
+		/*
+		 * The whole batch belongs to the selected
+		 * node, so findings can be looked up directly
+		 * without regrouping anything.
+		 */
 		if err :=
 			batch.Logs.GetFindings(
 				ctx,
 				h.DB,
 				h.Config.FindingsLog,
-				batch.NodeID,
+				node.ID,
 				params.Start.UnixNano(),
 				params.End.UnixNano(),
 			); err != nil {
+
+			failedNodes = 1
+			streamFailed = true
 
 			if err :=
 				writeSSE(
 					w,
 					"node_error",
 					explorerSSEError{
-						NodeID: batch.NodeID,
+						NodeID: node.ID,
 
-						NodeName: batch.NodeName,
+						NodeName: node.Name,
 
 						Message: fmt.Sprintf(
 							"failed to retrieve findings: %v",
@@ -337,8 +380,14 @@ func (h *Handler) ExplorerLogs(
 
 			flusher.Flush()
 
-			continue
+			break
 		}
+
+		results := make(
+			[]explorerSSELog,
+			0,
+			len(batch.Logs),
+		)
 
 		for _, item := range batch.Logs {
 
@@ -350,14 +399,17 @@ func (h *Handler) ExplorerLogs(
 				)
 
 			if err != nil {
+				failedNodes = 1
+				streamFailed = true
+
 				if err :=
 					writeSSE(
 						w,
 						"node_error",
 						explorerSSEError{
-							NodeID: batch.NodeID,
+							NodeID: node.ID,
 
-							NodeName: batch.NodeName,
+							NodeName: node.Name,
 
 							Message: fmt.Sprintf(
 								"failed to evaluate query: %v",
@@ -371,7 +423,7 @@ func (h *Handler) ExplorerLogs(
 
 				flusher.Flush()
 
-				continue
+				break
 			}
 
 			if !matches {
@@ -388,31 +440,45 @@ func (h *Handler) ExplorerLogs(
 			}
 
 			result.NodeID =
-				batch.NodeID
+				node.ID
 
-			sseBatch = append(
-				sseBatch,
-				result,
-			)
+			result.NodeName =
+				node.Name
 
-			totalMatches++
-
-			if len(sseBatch) >=
-				explorerSSEBatchSize {
-
-				if err :=
-					flushSSEBatch(); err != nil {
-
-					return
-				}
-			}
+			results =
+				append(
+					results,
+					result,
+				)
 		}
-	}
 
-	if err :=
-		flushSSEBatch(); err != nil {
+		if streamFailed {
+			break
+		}
 
-		return
+		if len(results) == 0 {
+			continue
+		}
+
+		totalMatches +=
+			len(results)
+
+		/*
+		 * Send the node's complete filtered batch.
+		 *
+		 * No global merge is necessary anymore.
+		 */
+		if err :=
+			writeSSE(
+				w,
+				"logs",
+				results,
+			); err != nil {
+
+			return
+		}
+
+		flusher.Flush()
 	}
 
 	_ = writeSSE(
@@ -428,6 +494,55 @@ func (h *Handler) ExplorerLogs(
 	)
 
 	flusher.Flush()
+}
+
+func getConnectedExplorerNodes(
+	allNodes []*nodes.Node,
+) []*nodes.Node {
+	result := make(
+		[]*nodes.Node,
+		0,
+		len(allNodes),
+	)
+
+	for _, node := range allNodes {
+
+		if node == nil {
+			continue
+		}
+
+		if !node.Connected() {
+			continue
+		}
+
+		result =
+			append(
+				result,
+				node,
+			)
+	}
+
+	return result
+}
+
+func findExplorerNode(
+	allNodes []*nodes.Node,
+	nodeID string,
+) *nodes.Node {
+	for _, node := range allNodes {
+
+		if node == nil {
+			continue
+		}
+
+		if node.ID ==
+			nodeID {
+
+			return node
+		}
+	}
+
+	return nil
 }
 
 func writeSSE(
@@ -495,19 +610,23 @@ func logItemToSSE(
 				),
 			}
 
-		if event.Request.Metadata != nil &&
-			event.Request.Metadata.Timestamp != nil {
+		if event.Request.Metadata != nil {
+			result.RequestID =
+				event.Request.Metadata.RequestId
 
-			result.Timestamp =
-				event.Request.Metadata.
-					Timestamp.
-					AsTime().
-					Format(
-						time.RFC3339Nano,
-					)
+			if event.Request.Metadata.Timestamp != nil {
+				result.Timestamp =
+					event.Request.Metadata.
+						Timestamp.
+						AsTime().
+						Format(
+							time.RFC3339Nano,
+						)
+			}
 		}
 
-		return result, nil
+		return result,
+			nil
 
 	case *ingestv1.Record_Response:
 		if event.Response == nil {
@@ -531,19 +650,23 @@ func logItemToSSE(
 				),
 			}
 
-		if event.Response.Metadata != nil &&
-			event.Response.Metadata.Timestamp != nil {
+		if event.Response.Metadata != nil {
+			result.RequestID =
+				event.Response.Metadata.RequestId
 
-			result.Timestamp =
-				event.Response.Metadata.
-					Timestamp.
-					AsTime().
-					Format(
-						time.RFC3339Nano,
-					)
+			if event.Response.Metadata.Timestamp != nil {
+				result.Timestamp =
+					event.Response.Metadata.
+						Timestamp.
+						AsTime().
+						Format(
+							time.RFC3339Nano,
+						)
+			}
 		}
 
-		return result, nil
+		return result,
+			nil
 
 	default:
 		return explorerSSELog{},
@@ -641,7 +764,8 @@ func parseExplorerParams(
 			)
 	}
 
-	return params, nil
+	return params,
+		nil
 }
 
 func parseExplorerTime(
@@ -653,7 +777,8 @@ func parseExplorerTime(
 			value,
 		); err == nil {
 
-		return parsed, nil
+		return parsed,
+			nil
 	}
 
 	parsed, err :=
@@ -672,7 +797,8 @@ func parseExplorerTime(
 			)
 	}
 
-	return parsed, nil
+	return parsed,
+		nil
 }
 
 func logToJob(
@@ -748,7 +874,8 @@ func logToJob(
 			}
 		}
 
-		return job, nil
+		return job,
+			nil
 
 	case *ingestv1.Record_Response:
 		if event.Response == nil {
@@ -797,7 +924,8 @@ func logToJob(
 			}
 		}
 
-		return job, nil
+		return job,
+			nil
 
 	default:
 		return audit.Job{},
