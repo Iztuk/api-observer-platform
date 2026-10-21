@@ -18,7 +18,8 @@ import (
 )
 
 const (
-	explorerDateTimeLayout = "2006-01-02T15:04"
+	explorerDateTimeLayout      = "2006-01-02T15:04"
+	explorerEnrichmentBatchSize = 1000
 )
 
 type explorerSSELog struct {
@@ -41,457 +42,220 @@ type explorerSSEError struct {
 	Message  string `json:"message"`
 }
 
-func (h *Handler) ExplorerPage(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	params, err :=
-		parseExplorerParams(
-			r,
-		)
-
+func (h *Handler) ExplorerPage(w http.ResponseWriter, r *http.Request) {
+	params, err := parseExplorerParams(r)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	connectedNodes :=
-		getConnectedExplorerNodes(
-			h.Nodes.List(),
-		)
+	connectedNodes := getConnectedExplorerNodes(h.Nodes.List())
 
-	nodeOptions := make(
-		[]explorer.NodeOption,
-		0,
-		len(connectedNodes),
-	)
-
-	for _, node := range connectedNodes {
-
-		nodeOptions =
-			append(
-				nodeOptions,
-				explorer.NodeOption{
-					ID: node.ID,
-
-					Name: node.Name,
-				},
-			)
-	}
-
-	selectedNodeID :=
-		r.URL.Query().Get(
-			"node",
-		)
-
-	/*
-	 * If the page is opened without an explicit node,
-	 * select the first connected node.
-	 *
-	 * The form will then include this node when the
-	 * frontend opens /logs.
-	 */
-	if selectedNodeID == "" &&
-		len(connectedNodes) > 0 {
-
-		selectedNodeID =
-			connectedNodes[0].ID
-	}
-
-	/*
-	 * If the URL contains a stale/disconnected node,
-	 * fall back to the first currently connected one.
-	 */
-	if selectedNodeID != "" &&
-		findExplorerNode(
-			connectedNodes,
-			selectedNodeID,
-		) == nil {
-
-		if len(connectedNodes) > 0 {
-			selectedNodeID =
-				connectedNodes[0].ID
-		} else {
-			selectedNodeID =
-				""
-		}
-	}
-
-	if err :=
-		explorer.ExplorerPage(
-			"Explorer",
-			params.Query,
-			params.StartString,
-			params.EndString,
-			nodeOptions,
-			selectedNodeID,
-		).Render(
-			r.Context(),
-			w,
-		); err != nil {
-
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusInternalServerError,
-		)
-
+	if err := explorer.ExplorerPage(
+		"Explorer",
+		params.Query,
+		params.StartString,
+		params.EndString,
+		len(connectedNodes) > 0,
+	).Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-func (h *Handler) ExplorerLogs(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	params, err :=
-		parseExplorerParams(
-			r,
-		)
-
+func (h *Handler) ExplorerLogs(w http.ResponseWriter, r *http.Request) {
+	params, err := parseExplorerParams(r)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	flusher, ok :=
-		w.(http.Flusher)
-
+	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(
-			w,
-			"streaming is not supported",
-			http.StatusInternalServerError,
-		)
-
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
 		return
 	}
 
-	queryExpression, err :=
-		query.ParseQuery(
-			params.Query,
-		)
-
+	queryExpression, err := query.ParseQuery(params.Query)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	nodeID :=
-		r.URL.Query().Get(
-			"node",
-		)
-
-	if nodeID == "" {
-		http.Error(
-			w,
-			"node is required",
-			http.StatusBadRequest,
-		)
-
+	targetNodes := getConnectedExplorerNodes(h.Nodes.List())
+	if len(targetNodes) == 0 {
+		http.Error(w, "no connected nodes available", http.StatusServiceUnavailable)
 		return
 	}
 
-	connectedNodes :=
-		getConnectedExplorerNodes(
-			h.Nodes.List(),
-		)
-
-	node :=
-		findExplorerNode(
-			connectedNodes,
-			nodeID,
-		)
-
-	if node == nil {
-		http.Error(
-			w,
-			"selected node is not connected",
-			http.StatusServiceUnavailable,
-		)
-
-		return
-	}
-
-	w.Header().Set(
-		"Content-Type",
-		"text/event-stream",
-	)
-
-	w.Header().Set(
-		"Cache-Control",
-		"no-cache",
-	)
-
-	w.Header().Set(
-		"Connection",
-		"keep-alive",
-	)
-
-	w.Header().Set(
-		"X-Accel-Buffering",
-		"no",
-	)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher.Flush()
 
-	ctx, cancel :=
-		context.WithCancel(
-			r.Context(),
-		)
-
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	/*
-	 * Explorer now streams exactly one node.
-	 *
-	 * The collector already batches up to 100
-	 * records, so those batches can pass directly
-	 * into GetFindings.
-	 */
-	batches := make(
-		chan log.StreamLogBatch,
-		2,
-	)
+	stream := log.StreamMergedLogs(ctx, targetNodes, params)
 
-	go func() {
-		defer close(
-			batches,
-		)
+	type mergedItem struct {
+		NodeID   string
+		NodeName string
+		Item     query.LogItem
+	}
 
-		log.StreamCollectorLogs(
-			ctx,
-			node,
-			params,
-			batches,
-		)
-	}()
+	batch := make([]mergedItem, 0, explorerEnrichmentBatchSize)
 
 	totalMatches := 0
 	completedNodes := 0
 	failedNodes := 0
 
-	streamFailed := false
-
-	for batch := range batches {
-
-		if batch.Err != nil {
-			failedNodes = 1
-			streamFailed = true
-
-			if err :=
-				writeSSE(
-					w,
-					"node_error",
-					explorerSSEError{
-						NodeID: node.ID,
-
-						NodeName: node.Name,
-
-						Message: batch.Err.Error(),
-					},
-				); err != nil {
-
-				return
-			}
-
-			flusher.Flush()
-
-			break
+	flushBatch := func() error {
+		if len(batch) == 0 {
+			return nil
 		}
 
-		if batch.Done {
-			completedNodes = 1
+		items := make(query.LogItems, len(batch))
 
-			if err :=
-				writeSSE(
-					w,
-					"node_done",
-					map[string]string{
-						"node_id": node.ID,
-
-						"node_name": node.Name,
-					},
-				); err != nil {
-
-				return
-			}
-
-			flusher.Flush()
-
-			break
+		for i := range batch {
+			items[i] = batch[i].Item
 		}
 
-		if len(batch.Logs) == 0 {
-			continue
+		if err := items.GetFindings(
+			ctx,
+			h.DB,
+			h.Config.FindingsLog,
+		); err != nil {
+			return fmt.Errorf("failed to retrieve findings: %w", err)
 		}
 
-		/*
-		 * The whole batch belongs to the selected
-		 * node, so findings can be looked up directly
-		 * without regrouping anything.
-		 */
-		if err :=
-			batch.Logs.GetFindings(
-				ctx,
-				h.DB,
-				h.Config.FindingsLog,
-				node.ID,
-				params.Start.UnixNano(),
-				params.End.UnixNano(),
-			); err != nil {
+		results := make([]explorerSSELog, 0, len(items))
 
-			failedNodes = 1
-			streamFailed = true
+		for i := range items {
+			item := items[i]
 
-			if err :=
-				writeSSE(
-					w,
-					"node_error",
-					explorerSSEError{
-						NodeID: node.ID,
-
-						NodeName: node.Name,
-
-						Message: fmt.Sprintf(
-							"failed to retrieve findings: %v",
-							err,
-						),
-					},
-				); err != nil {
-
-				return
-			}
-
-			flusher.Flush()
-
-			break
-		}
-
-		results := make(
-			[]explorerSSELog,
-			0,
-			len(batch.Logs),
-		)
-
-		for _, item := range batch.Logs {
-
-			matches, err :=
-				query.EvaluateExpression(
-					params.Query,
-					queryExpression,
-					item,
-				)
-
+			matches, err := query.EvaluateExpression(
+				params.Query,
+				queryExpression,
+				item,
+			)
 			if err != nil {
-				failedNodes = 1
-				streamFailed = true
-
-				if err :=
-					writeSSE(
-						w,
-						"node_error",
-						explorerSSEError{
-							NodeID: node.ID,
-
-							NodeName: node.Name,
-
-							Message: fmt.Sprintf(
-								"failed to evaluate query: %v",
-								err,
-							),
-						},
-					); err != nil {
-
-					return
-				}
-
-				flusher.Flush()
-
-				break
+				return fmt.Errorf("failed to evaluate query: %w", err)
 			}
 
 			if !matches {
 				continue
 			}
 
-			result, err :=
-				logItemToSSE(
-					item,
-				)
-
+			result, err := logItemToSSE(item)
 			if err != nil {
 				continue
 			}
 
-			result.NodeID =
-				node.ID
+			result.NodeID = batch[i].NodeID
+			result.NodeName = batch[i].NodeName
 
-			result.NodeName =
-				node.Name
-
-			results =
-				append(
-					results,
-					result,
-				)
+			results = append(results, result)
 		}
 
-		if streamFailed {
-			break
-		}
+		batch = batch[:0]
 
 		if len(results) == 0 {
-			continue
+			return nil
 		}
 
-		totalMatches +=
-			len(results)
+		totalMatches += len(results)
 
-		/*
-		 * Send the node's complete filtered batch.
-		 *
-		 * No global merge is necessary anymore.
-		 */
-		if err :=
-			writeSSE(
-				w,
-				"logs",
-				results,
-			); err != nil {
-
-			return
+		if err := writeSSE(w, "logs", results); err != nil {
+			return err
 		}
 
 		flusher.Flush()
+
+		return nil
 	}
 
-	_ = writeSSE(
-		w,
-		"done",
-		map[string]int{
-			"matches": totalMatches,
+	for event := range stream {
+		if event.Err != nil {
+			failedNodes++
 
-			"completed_nodes": completedNodes,
+			if err := writeSSE(w, "node_error", explorerSSEError{
+				NodeID:   event.NodeID,
+				NodeName: event.NodeName,
+				Message:  event.Err.Error(),
+			}); err != nil {
+				return
+			}
 
-			"failed_nodes": failedNodes,
-		},
-	)
+			flusher.Flush()
+			continue
+		}
+
+		if event.Done {
+			completedNodes++
+
+			if err := writeSSE(w, "node_done", map[string]string{
+				"node_id":   event.NodeID,
+				"node_name": event.NodeName,
+			}); err != nil {
+				return
+			}
+
+			flusher.Flush()
+			continue
+		}
+
+		if event.Log == nil {
+			continue
+		}
+
+		batch = append(batch, mergedItem{
+			NodeID:   event.NodeID,
+			NodeName: event.NodeName,
+			Item:     event.Log.Item,
+		})
+
+		if len(batch) < explorerEnrichmentBatchSize {
+			continue
+		}
+
+		if err := flushBatch(); err != nil {
+			failedNodes++
+
+			if err := writeSSE(w, "node_error", explorerSSEError{
+				Message: err.Error(),
+			}); err != nil {
+				return
+			}
+
+			flusher.Flush()
+			break
+		}
+	}
+
+	if len(batch) > 0 {
+		if err := flushBatch(); err != nil {
+			failedNodes++
+
+			if err := writeSSE(w, "node_error", explorerSSEError{
+				Message: err.Error(),
+			}); err != nil {
+				return
+			}
+
+			flusher.Flush()
+		}
+	}
+
+	if err := writeSSE(w, "done", map[string]int{
+		"matches":         totalMatches,
+		"completed_nodes": completedNodes,
+		"failed_nodes":    failedNodes,
+	}); err != nil {
+		return
+	}
 
 	flusher.Flush()
 }

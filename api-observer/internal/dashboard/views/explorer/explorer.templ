@@ -2,30 +2,20 @@ package explorer
 
 import "api-observer/internal/dashboard/views"
 
-type NodeOption struct {
-	ID   string
-	Name string
-}
-
 templ ExplorerPage(
 	title string,
 	queryString string,
 	start string,
 	end string,
-	nodes []NodeOption,
-	selectedNodeID string,
+	hasConnectedNodes bool,
 ) {
 	@views.Layout(title) {
-		<link
-			rel="stylesheet"
-			href="/static/css/explorer.css"
-		/>
+		<link rel="stylesheet" href="/static/css/explorer.css"/>
 		@ExplorerPageContent(
 			queryString,
 			start,
 			end,
-			nodes,
-			selectedNodeID,
+			hasConnectedNodes,
 		)
 		@ExplorerStreamScript()
 	}
@@ -35,8 +25,7 @@ templ ExplorerPageContent(
 	queryString string,
 	start string,
 	end string,
-	nodes []NodeOption,
-	selectedNodeID string,
+	hasConnectedNodes bool,
 ) {
 	<div class="explorer-page">
 		<form
@@ -71,29 +60,16 @@ templ ExplorerPageContent(
 						stroke-linejoin="round"
 						aria-hidden="true"
 					>
-						<circle
-							cx="11"
-							cy="11"
-							r="8"
-						></circle>
-						<line
-							x1="21"
-							y1="21"
-							x2="16.65"
-							y2="16.65"
-						></line>
+						<circle cx="11" cy="11" r="8"></circle>
+						<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
 					</svg>
-					<span>
-						Search
-					</span>
+					<span>Search</span>
 				</button>
 			</div>
 
 			<details class="explorer-advanced">
 				<summary>
-					<span>
-						Advanced Settings
-					</span>
+					<span>Advanced Settings</span>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						width="16"
@@ -112,9 +88,7 @@ templ ExplorerPageContent(
 
 				<div class="explorer-filters">
 					<div class="explorer-filter">
-						<label for="explorer-start">
-							Start Date
-						</label>
+						<label for="explorer-start">Start Date</label>
 						<input
 							type="datetime-local"
 							id="explorer-start"
@@ -124,45 +98,13 @@ templ ExplorerPageContent(
 					</div>
 
 					<div class="explorer-filter">
-						<label for="explorer-end">
-							End Date
-						</label>
+						<label for="explorer-end">End Date</label>
 						<input
 							type="datetime-local"
 							id="explorer-end"
 							name="end"
 							value={ end }
 						/>
-					</div>
-
-					<div class="explorer-filter">
-						<label for="explorer-node">
-							Node
-						</label>
-						<select
-							id="explorer-node"
-							name="node"
-							disabled?={ len(nodes) == 0 }
-						>
-							if len(nodes) == 0 {
-								<option value="">
-									No connected nodes
-								</option>
-							} else {
-								for _, node := range nodes {
-									<option
-										value={ node.ID }
-										selected?={ node.ID == selectedNodeID }
-									>
-										if node.Name != "" {
-											{ node.Name }
-										} else {
-											{ node.ID }
-										}
-									</option>
-								}
-							}
-						</select>
 					</div>
 				</div>
 			</details>
@@ -173,7 +115,7 @@ templ ExplorerPageContent(
 				id="explorer-stream-status"
 				class="explorer-stream-status"
 			>
-				if len(nodes) == 0 {
+				if !hasConnectedNodes {
 					No connected nodes.
 				} else {
 					Connecting...
@@ -189,6 +131,7 @@ templ ExplorerPageContent(
 						<tr>
 							<th></th>
 							<th>Timestamp</th>
+							<th>Node</th>
 							<th>Type</th>
 							<th>Method</th>
 							<th>Path</th>
@@ -199,11 +142,8 @@ templ ExplorerPageContent(
 
 					<tbody id="explorer-log-body">
 						<tr id="explorer-empty-row">
-							<td
-								colspan="7"
-								class="explorer-empty"
-							>
-								if len(nodes) == 0 {
+							<td colspan="8" class="explorer-empty">
+								if !hasConnectedNodes {
 									No connected nodes.
 								} else {
 									Loading logs...
@@ -224,24 +164,13 @@ templ ExplorerStreamScript() {
 			const body = document.getElementById("explorer-log-body");
 			const container = document.getElementById("explorer-table-container");
 			const statusElement = document.getElementById("explorer-stream-status");
-			const nodeSelect = document.getElementById("explorer-node");
 
 			if (!form || !body || !container) {
 				return;
 			}
 
-			if (!nodeSelect || !nodeSelect.value) {
-				return;
-			}
-
 			const params = new URLSearchParams(new FormData(form));
-
-			/*
-			 * Measure the total stream time as observed
-			 * by the frontend.
-			 */
 			const streamStartTime = performance.now();
-
 			const source = new EventSource("/logs?" + params.toString());
 
 			const rowHeight = 48;
@@ -250,6 +179,9 @@ templ ExplorerStreamScript() {
 			const logs = [];
 			const knownLogKeys = new Set();
 			const expandedRows = new Set();
+
+			let completedNodes = 0;
+			let failedNodes = 0;
 
 			let renderPending = false;
 			let forceRenderPending = false;
@@ -304,16 +236,13 @@ templ ExplorerStreamScript() {
 
 			const createDetailField = (label, value) => {
 				const field = document.createElement("div");
-
 				field.className = "explorer-detail-field";
 
 				const labelElement = document.createElement("span");
-
 				labelElement.className = "explorer-detail-label";
 				labelElement.textContent = label;
 
 				const valueElement = document.createElement("span");
-
 				valueElement.className = "explorer-detail-value";
 				valueElement.textContent = value ?? "";
 
@@ -324,7 +253,6 @@ templ ExplorerStreamScript() {
 
 			const createFinding = (finding) => {
 				const findingElement = document.createElement("div");
-
 				findingElement.className = "explorer-finding";
 
 				if (finding.severity) {
@@ -332,7 +260,6 @@ templ ExplorerStreamScript() {
 				}
 
 				const fields = document.createElement("div");
-
 				fields.className = "explorer-finding-fields";
 
 				fields.append(
@@ -354,15 +281,12 @@ templ ExplorerStreamScript() {
 
 			const createDetailsRow = (log) => {
 				const detailsRow = document.createElement("tr");
-
 				detailsRow.className = "explorer-log-details-row";
 
 				const cell = document.createElement("td");
-
-				cell.colSpan = 7;
+				cell.colSpan = 8;
 
 				const details = document.createElement("div");
-
 				details.className = "explorer-log-details";
 
 				const findings = Array.isArray(log.findings)
@@ -370,11 +294,9 @@ templ ExplorerStreamScript() {
 					: [];
 
 				const findingsSection = document.createElement("div");
-
 				findingsSection.className = "explorer-findings";
 
 				const title = document.createElement("div");
-
 				title.className = "explorer-findings-title";
 				title.textContent = "Findings (" + findings.length + ")";
 
@@ -402,12 +324,11 @@ templ ExplorerStreamScript() {
 
 			const createSpacerRow = (height) => {
 				const row = document.createElement("tr");
-
 				row.className = "explorer-spacer-row";
 
 				const cell = document.createElement("td");
 
-				cell.colSpan = 7;
+				cell.colSpan = 8;
 				cell.style.height = Math.max(0, height) + "px";
 
 				row.append(cell);
@@ -438,11 +359,9 @@ templ ExplorerStreamScript() {
 					: "";
 
 				const toggleCell = document.createElement("td");
-
 				toggleCell.className = "explorer-toggle-cell";
 
 				const toggle = document.createElement("span");
-
 				toggle.className = "explorer-row-toggle";
 				toggle.textContent = expanded ? "⌄" : "›";
 
@@ -451,6 +370,7 @@ templ ExplorerStreamScript() {
 				row.append(
 					toggleCell,
 					createCell(timestamp),
+					createCell(log.node_name || ""),
 					createCell(log.type || ""),
 					createCell(log.method || ""),
 					createCell(log.path || ""),
@@ -483,10 +403,11 @@ templ ExplorerStreamScript() {
 			const getRenderWindow = () => {
 				const scrollTop = container.scrollTop;
 				const viewportHeight = container.clientHeight;
+
 				const visibleStart = Math.floor(scrollTop / rowHeight);
 				const visibleCount = Math.ceil(viewportHeight / rowHeight);
-				const startIndex = Math.max(0, visibleStart - overscan);
 
+				const startIndex = Math.max(0, visibleStart - overscan);
 				const endIndex = Math.min(
 					logs.length,
 					visibleStart + visibleCount + overscan,
@@ -551,7 +472,6 @@ templ ExplorerStreamScript() {
 				const fragment = document.createDocumentFragment();
 
 				const topSpacer = createSpacerRow(topHeight);
-
 				topSpacer.dataset.position = "top";
 
 				fragment.append(topSpacer);
@@ -567,7 +487,6 @@ templ ExplorerStreamScript() {
 				}
 
 				const bottomSpacer = createSpacerRow(bottomHeight);
-
 				bottomSpacer.dataset.position = "bottom";
 
 				fragment.append(bottomSpacer);
@@ -593,7 +512,6 @@ templ ExplorerStreamScript() {
 					const shouldForce = forceRenderPending;
 
 					forceRenderPending = false;
-
 					render(shouldForce);
 				});
 			};
@@ -613,14 +531,7 @@ templ ExplorerStreamScript() {
 			});
 
 			source.addEventListener("open", () => {
-				const selectedOption =
-					nodeSelect.options[nodeSelect.selectedIndex];
-
-				const nodeName = selectedOption
-					? selectedOption.textContent.trim()
-					: nodeSelect.value;
-
-				updateStatus("Streaming logs from " + nodeName + "...");
+				updateStatus("Streaming logs from connected nodes...");
 			});
 
 			source.addEventListener("logs", (event) => {
@@ -655,6 +566,11 @@ templ ExplorerStreamScript() {
 					return;
 				}
 
+				/*
+				 * The backend k-way merge already guarantees
+				 * global ordering, so batches can be appended
+				 * directly.
+				 */
 				logs.push(...uniqueIncoming);
 
 				scheduleRender();
@@ -667,10 +583,19 @@ templ ExplorerStreamScript() {
 			});
 
 			source.addEventListener("node_done", () => {
+				completedNodes++;
+
+				const nodeLabel = completedNodes === 1
+					? "node complete"
+					: "nodes complete";
+
 				updateStatus(
-					"Finishing stream — " +
+					"Streaming logs — " +
 						logs.length +
-						" matches",
+						" matches, " +
+						completedNodes +
+						" " +
+						nodeLabel,
 				);
 			});
 
@@ -684,15 +609,25 @@ templ ExplorerStreamScript() {
 					return;
 				}
 
+				failedNodes++;
+
 				console.error(
 					"Collector stream failed:",
 					result.node_name || result.node_id,
 					result.message,
 				);
 
+				const errorLabel = failedNodes === 1
+					? "node error"
+					: "node errors";
+
 				updateStatus(
-					"Node stream error — " +
-						result.message,
+					"Streaming logs — " +
+						logs.length +
+						" matches, " +
+						failedNodes +
+						" " +
+						errorLabel,
 				);
 			});
 
@@ -703,25 +638,21 @@ templ ExplorerStreamScript() {
 					result = JSON.parse(event.data);
 				} catch (error) {
 					console.error("Failed to parse done event:", error);
-
 					source.close();
-
 					return;
 				}
 
-				const streamEndTime = performance.now();
-				const totalStreamTime = streamEndTime - streamStartTime;
+				const totalStreamTime = performance.now() - streamStartTime;
 
 				source.close();
 
 				if (logs.length === 0) {
 					const row = document.createElement("tr");
-
 					row.id = "explorer-empty-row";
 
 					const cell = document.createElement("td");
 
-					cell.colSpan = 7;
+					cell.colSpan = 8;
 					cell.className = "explorer-empty";
 					cell.textContent = "No logs found.";
 
@@ -734,23 +665,25 @@ templ ExplorerStreamScript() {
 					scheduleRender(true);
 				}
 
-				if (result.failed_nodes > 0) {
-					updateStatus(
-						"Stream failed — " +
-							result.matches +
-							" matches loaded in " +
-							formatDuration(totalStreamTime),
-					);
+				const nodeLabel = result.completed_nodes === 1
+					? "node"
+					: "nodes";
 
-					return;
+				let message =
+					"Complete — " +
+					result.matches +
+					" matches across " +
+					result.completed_nodes +
+					" " +
+					nodeLabel +
+					" in " +
+					formatDuration(totalStreamTime);
+
+				if (result.failed_nodes > 0) {
+					message += " (" + result.failed_nodes + " failed)";
 				}
 
-				updateStatus(
-					"Complete — " +
-						result.matches +
-						" matches in " +
-						formatDuration(totalStreamTime),
-				);
+				updateStatus(message);
 			});
 
 			source.onerror = () => {

@@ -186,7 +186,7 @@
 
 .explorer-filters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 
   padding: 1rem;
@@ -320,7 +320,7 @@
 
 .explorer-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1000px;
 
   border-collapse: separate;
   border-spacing: 0;
@@ -407,16 +407,23 @@
 }
 
 /*
- * Type.
+ * Node.
  */
 .explorer-table th:nth-child(3) {
+  width: 10rem;
+}
+
+/*
+ * Type.
+ */
+.explorer-table th:nth-child(4) {
   width: 7rem;
 }
 
 /*
  * Method.
  */
-.explorer-table th:nth-child(4) {
+.explorer-table th:nth-child(5) {
   width: 7rem;
 }
 
@@ -425,21 +432,21 @@
  *
  * This column gets the remaining available width.
  */
-.explorer-table th:nth-child(5) {
+.explorer-table th:nth-child(6) {
   width: auto;
 }
 
 /*
  * Status.
  */
-.explorer-table th:nth-child(6) {
+.explorer-table th:nth-child(7) {
   width: 6rem;
 }
 
 /*
  * Findings.
  */
-.explorer-table th:nth-child(7) {
+.explorer-table th:nth-child(8) {
   width: 6rem;
 }
 
@@ -671,12 +678,6 @@
    Responsive Layout
 ========================================= */
 
-@media (max-width: 900px) {
-  .explorer-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 700px) {
   .explorer-page {
     gap: 1rem;
@@ -695,7 +696,7 @@
   }
 
   .explorer-table {
-    min-width: 800px;
+    min-width: 900px;
   }
 
   .explorer-log-details {
