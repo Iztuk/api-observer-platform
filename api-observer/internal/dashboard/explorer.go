@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"api-observer/internal/audit"
@@ -19,14 +18,14 @@ import (
 )
 
 const (
-	explorerDateTimeLayout = "2006-01-02T15:04"
-
-	explorerSSEBatchSize = 50
+	explorerDateTimeLayout      = "2006-01-02T15:04"
+	explorerEnrichmentBatchSize = 1000
 )
 
 type explorerSSELog struct {
-	NodeID   string `json:"node_id"`
-	NodeName string `json:"node_name"`
+	NodeID    string `json:"node_id"`
+	NodeName  string `json:"node_name"`
+	RequestID string `json:"request_id"`
 
 	Timestamp string `json:"timestamp"`
 	Type      string `json:"type"`
@@ -43,391 +42,271 @@ type explorerSSEError struct {
 	Message  string `json:"message"`
 }
 
-func (h *Handler) ExplorerPage(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	params, err :=
-		parseExplorerParams(
-			r,
-		)
-
+func (h *Handler) ExplorerPage(w http.ResponseWriter, r *http.Request) {
+	params, err := parseExplorerParams(r)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err :=
-		explorer.ExplorerPage(
-			"Explorer",
-			params.Query,
-			params.StartString,
-			params.EndString,
-		).Render(
-			r.Context(),
-			w,
-		); err != nil {
+	connectedNodes := getConnectedExplorerNodes(h.Nodes.List())
 
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusInternalServerError,
-		)
-
+	if err := explorer.ExplorerPage(
+		"Explorer",
+		params.Query,
+		params.StartString,
+		params.EndString,
+		len(connectedNodes) > 0,
+	).Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-func (h *Handler) ExplorerLogs(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	params, err :=
-		parseExplorerParams(
-			r,
-		)
-
+func (h *Handler) ExplorerLogs(w http.ResponseWriter, r *http.Request) {
+	params, err := parseExplorerParams(r)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	flusher, ok :=
-		w.(http.Flusher)
-
+	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(
-			w,
-			"streaming is not supported",
-			http.StatusInternalServerError,
-		)
-
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
 		return
 	}
 
-	queryExpression, err :=
-		query.ParseQuery(
-			params.Query,
-		)
-
+	queryExpression, err := query.ParseQuery(params.Query)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	targetNodes := make(
-		[]*nodes.Node,
-		0,
-	)
-
-	for _, node := range h.Nodes.List() {
-
-		if !node.Connected() {
-			continue
-		}
-
-		targetNodes = append(
-			targetNodes,
-			node,
-		)
-	}
-
+	targetNodes := getConnectedExplorerNodes(h.Nodes.List())
 	if len(targetNodes) == 0 {
-		http.Error(
-			w,
-			"no connected nodes available",
-			http.StatusServiceUnavailable,
-		)
-
+		http.Error(w, "no connected nodes available", http.StatusServiceUnavailable)
 		return
 	}
 
-	w.Header().Set(
-		"Content-Type",
-		"text/event-stream",
-	)
-
-	w.Header().Set(
-		"Cache-Control",
-		"no-cache",
-	)
-
-	w.Header().Set(
-		"Connection",
-		"keep-alive",
-	)
-
-	w.Header().Set(
-		"X-Accel-Buffering",
-		"no",
-	)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher.Flush()
 
-	ctx, cancel :=
-		context.WithCancel(
-			r.Context(),
-		)
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	batches := make(
-		chan log.StreamLogBatch,
-		len(targetNodes)*2,
-	)
+	stream := log.StreamMergedLogs(ctx, targetNodes, params)
 
-	var wg sync.WaitGroup
-
-	for _, node := range targetNodes {
-
-		wg.Add(1)
-
-		go func(
-			node *nodes.Node,
-		) {
-			defer wg.Done()
-
-			log.StreamCollectorLogs(
-				ctx,
-				node,
-				params,
-				batches,
-			)
-		}(
-			node,
-		)
+	type mergedItem struct {
+		NodeID   string
+		NodeName string
+		Item     query.LogItem
 	}
 
-	go func() {
-		wg.Wait()
-
-		close(
-			batches,
-		)
-	}()
+	batch := make([]mergedItem, 0, explorerEnrichmentBatchSize)
 
 	totalMatches := 0
 	completedNodes := 0
 	failedNodes := 0
 
-	sseBatch := make(
-		[]explorerSSELog,
-		0,
-		explorerSSEBatchSize,
-	)
-
-	flushSSEBatch :=
-		func() error {
-			if len(sseBatch) == 0 {
-				return nil
-			}
-
-			if err :=
-				writeSSE(
-					w,
-					"logs",
-					sseBatch,
-				); err != nil {
-
-				return err
-			}
-
-			flusher.Flush()
-
-			sseBatch =
-				sseBatch[:0]
-
+	flushBatch := func() error {
+		if len(batch) == 0 {
 			return nil
 		}
 
-	for batch := range batches {
+		items := make(query.LogItems, len(batch))
 
-		if batch.Err != nil {
-			failedNodes++
-
-			if err :=
-				writeSSE(
-					w,
-					"node_error",
-					explorerSSEError{
-						NodeID: batch.NodeID,
-
-						NodeName: batch.NodeName,
-
-						Message: batch.Err.Error(),
-					},
-				); err != nil {
-
-				return
-			}
-
-			flusher.Flush()
-
-			continue
+		for i := range batch {
+			items[i] = batch[i].Item
 		}
 
-		if batch.Done {
-			completedNodes++
-
-			if err :=
-				writeSSE(
-					w,
-					"node_done",
-					map[string]string{
-						"node_id": batch.NodeID,
-
-						"node_name": batch.NodeName,
-					},
-				); err != nil {
-
-				return
-			}
-
-			flusher.Flush()
-
-			continue
+		if err := items.GetFindings(
+			ctx,
+			h.DB,
+			h.Config.FindingsLog,
+		); err != nil {
+			return fmt.Errorf("failed to retrieve findings: %w", err)
 		}
 
-		if len(batch.Logs) == 0 {
-			continue
-		}
+		results := make([]explorerSSELog, 0, len(items))
 
-		if err :=
-			batch.Logs.GetFindings(
-				ctx,
-				h.DB,
-				h.Config.FindingsLog,
-				batch.NodeID,
-				params.Start.UnixNano(),
-				params.End.UnixNano(),
-			); err != nil {
+		for i := range items {
+			item := items[i]
 
-			if err :=
-				writeSSE(
-					w,
-					"node_error",
-					explorerSSEError{
-						NodeID: batch.NodeID,
-
-						NodeName: batch.NodeName,
-
-						Message: fmt.Sprintf(
-							"failed to retrieve findings: %v",
-							err,
-						),
-					},
-				); err != nil {
-
-				return
-			}
-
-			flusher.Flush()
-
-			continue
-		}
-
-		for _, item := range batch.Logs {
-
-			matches, err :=
-				query.EvaluateExpression(
-					params.Query,
-					queryExpression,
-					item,
-				)
-
+			matches, err := query.EvaluateExpression(
+				params.Query,
+				queryExpression,
+				item,
+			)
 			if err != nil {
-				if err :=
-					writeSSE(
-						w,
-						"node_error",
-						explorerSSEError{
-							NodeID: batch.NodeID,
-
-							NodeName: batch.NodeName,
-
-							Message: fmt.Sprintf(
-								"failed to evaluate query: %v",
-								err,
-							),
-						},
-					); err != nil {
-
-					return
-				}
-
-				flusher.Flush()
-
-				continue
+				return fmt.Errorf("failed to evaluate query: %w", err)
 			}
 
 			if !matches {
 				continue
 			}
 
-			result, err :=
-				logItemToSSE(
-					item,
-				)
-
+			result, err := logItemToSSE(item)
 			if err != nil {
 				continue
 			}
 
-			result.NodeID =
-				batch.NodeID
+			result.NodeID = batch[i].NodeID
+			result.NodeName = batch[i].NodeName
 
-			sseBatch = append(
-				sseBatch,
-				result,
-			)
+			results = append(results, result)
+		}
 
-			totalMatches++
+		batch = batch[:0]
 
-			if len(sseBatch) >=
-				explorerSSEBatchSize {
+		if len(results) == 0 {
+			return nil
+		}
 
-				if err :=
-					flushSSEBatch(); err != nil {
+		totalMatches += len(results)
 
-					return
-				}
+		if err := writeSSE(w, "logs", results); err != nil {
+			return err
+		}
+
+		flusher.Flush()
+
+		return nil
+	}
+
+	for event := range stream {
+		if event.Err != nil {
+			failedNodes++
+
+			if err := writeSSE(w, "node_error", explorerSSEError{
+				NodeID:   event.NodeID,
+				NodeName: event.NodeName,
+				Message:  event.Err.Error(),
+			}); err != nil {
+				return
 			}
+
+			flusher.Flush()
+			continue
+		}
+
+		if event.Done {
+			completedNodes++
+
+			if err := writeSSE(w, "node_done", map[string]string{
+				"node_id":   event.NodeID,
+				"node_name": event.NodeName,
+			}); err != nil {
+				return
+			}
+
+			flusher.Flush()
+			continue
+		}
+
+		if event.Log == nil {
+			continue
+		}
+
+		batch = append(batch, mergedItem{
+			NodeID:   event.NodeID,
+			NodeName: event.NodeName,
+			Item:     event.Log.Item,
+		})
+
+		if len(batch) < explorerEnrichmentBatchSize {
+			continue
+		}
+
+		if err := flushBatch(); err != nil {
+			failedNodes++
+
+			if err := writeSSE(w, "node_error", explorerSSEError{
+				Message: err.Error(),
+			}); err != nil {
+				return
+			}
+
+			flusher.Flush()
+			break
 		}
 	}
 
-	if err :=
-		flushSSEBatch(); err != nil {
+	if len(batch) > 0 {
+		if err := flushBatch(); err != nil {
+			failedNodes++
 
+			if err := writeSSE(w, "node_error", explorerSSEError{
+				Message: err.Error(),
+			}); err != nil {
+				return
+			}
+
+			flusher.Flush()
+		}
+	}
+
+	if err := writeSSE(w, "done", map[string]int{
+		"matches":         totalMatches,
+		"completed_nodes": completedNodes,
+		"failed_nodes":    failedNodes,
+	}); err != nil {
 		return
 	}
 
-	_ = writeSSE(
-		w,
-		"done",
-		map[string]int{
-			"matches": totalMatches,
+	flusher.Flush()
+}
 
-			"completed_nodes": completedNodes,
-
-			"failed_nodes": failedNodes,
-		},
+func getConnectedExplorerNodes(
+	allNodes []*nodes.Node,
+) []*nodes.Node {
+	result := make(
+		[]*nodes.Node,
+		0,
+		len(allNodes),
 	)
 
-	flusher.Flush()
+	for _, node := range allNodes {
+
+		if node == nil {
+			continue
+		}
+
+		if !node.Connected() {
+			continue
+		}
+
+		result =
+			append(
+				result,
+				node,
+			)
+	}
+
+	return result
+}
+
+func findExplorerNode(
+	allNodes []*nodes.Node,
+	nodeID string,
+) *nodes.Node {
+	for _, node := range allNodes {
+
+		if node == nil {
+			continue
+		}
+
+		if node.ID ==
+			nodeID {
+
+			return node
+		}
+	}
+
+	return nil
 }
 
 func writeSSE(
@@ -495,19 +374,23 @@ func logItemToSSE(
 				),
 			}
 
-		if event.Request.Metadata != nil &&
-			event.Request.Metadata.Timestamp != nil {
+		if event.Request.Metadata != nil {
+			result.RequestID =
+				event.Request.Metadata.RequestId
 
-			result.Timestamp =
-				event.Request.Metadata.
-					Timestamp.
-					AsTime().
-					Format(
-						time.RFC3339Nano,
-					)
+			if event.Request.Metadata.Timestamp != nil {
+				result.Timestamp =
+					event.Request.Metadata.
+						Timestamp.
+						AsTime().
+						Format(
+							time.RFC3339Nano,
+						)
+			}
 		}
 
-		return result, nil
+		return result,
+			nil
 
 	case *ingestv1.Record_Response:
 		if event.Response == nil {
@@ -531,19 +414,23 @@ func logItemToSSE(
 				),
 			}
 
-		if event.Response.Metadata != nil &&
-			event.Response.Metadata.Timestamp != nil {
+		if event.Response.Metadata != nil {
+			result.RequestID =
+				event.Response.Metadata.RequestId
 
-			result.Timestamp =
-				event.Response.Metadata.
-					Timestamp.
-					AsTime().
-					Format(
-						time.RFC3339Nano,
-					)
+			if event.Response.Metadata.Timestamp != nil {
+				result.Timestamp =
+					event.Response.Metadata.
+						Timestamp.
+						AsTime().
+						Format(
+							time.RFC3339Nano,
+						)
+			}
 		}
 
-		return result, nil
+		return result,
+			nil
 
 	default:
 		return explorerSSELog{},
@@ -641,7 +528,8 @@ func parseExplorerParams(
 			)
 	}
 
-	return params, nil
+	return params,
+		nil
 }
 
 func parseExplorerTime(
@@ -653,7 +541,8 @@ func parseExplorerTime(
 			value,
 		); err == nil {
 
-		return parsed, nil
+		return parsed,
+			nil
 	}
 
 	parsed, err :=
@@ -672,7 +561,8 @@ func parseExplorerTime(
 			)
 	}
 
-	return parsed, nil
+	return parsed,
+		nil
 }
 
 func logToJob(
@@ -748,7 +638,8 @@ func logToJob(
 			}
 		}
 
-		return job, nil
+		return job,
+			nil
 
 	case *ingestv1.Record_Response:
 		if event.Response == nil {
@@ -797,7 +688,8 @@ func logToJob(
 			}
 		}
 
-		return job, nil
+		return job,
+			nil
 
 	default:
 		return audit.Job{},

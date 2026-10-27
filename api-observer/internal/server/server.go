@@ -202,7 +202,7 @@ func RunServer(
 
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
+		WriteTimeout:      0,
 
 		ErrorLog: appLogger,
 	}

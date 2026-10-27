@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	"api-observer/internal/audit"
@@ -81,402 +80,190 @@ func (h *Handler) AnalysisPage(
 	}
 }
 
-func (h *Handler) AnalysisLogs(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	params, err :=
-		parseAnalysisParams(
-			r,
-		)
-
+func (h *Handler) AnalysisLogs(w http.ResponseWriter, r *http.Request) {
+	params, err := parseAnalysisParams(r)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	ruleSet, err :=
-		parseAnalysisRuleSet(
-			r,
-		)
-
+	ruleSet, err := parseAnalysisRuleSet(r)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	queryExpression, err :=
-		query.ParseQuery(
-			params.Query,
-		)
-
+	queryExpression, err := query.ParseQuery(params.Query)
 	if err != nil {
-		http.Error(
-			w,
-			err.Error(),
-			http.StatusBadRequest,
-		)
-
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	flusher, ok :=
-		w.(http.Flusher)
-
+	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(
-			w,
-			"streaming is not supported",
-			http.StatusInternalServerError,
-		)
-
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
 		return
 	}
 
-	targetNodes := make(
-		[]*nodes.Node,
-		0,
-	)
+	targetNodes := make([]*nodes.Node, 0)
 
 	for _, node := range h.Nodes.List() {
-
 		if !node.Connected() {
 			continue
 		}
 
-		targetNodes = append(
-			targetNodes,
-			node,
-		)
+		targetNodes = append(targetNodes, node)
 	}
 
 	if len(targetNodes) == 0 {
-		http.Error(
-			w,
-			"no connected nodes available",
-			http.StatusServiceUnavailable,
-		)
-
+		http.Error(w, "no connected nodes available", http.StatusServiceUnavailable)
 		return
 	}
 
-	w.Header().Set(
-		"Content-Type",
-		"text/event-stream",
-	)
-
-	w.Header().Set(
-		"Cache-Control",
-		"no-cache",
-	)
-
-	w.Header().Set(
-		"Connection",
-		"keep-alive",
-	)
-
-	w.Header().Set(
-		"X-Accel-Buffering",
-		"no",
-	)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher.Flush()
 
-	ctx, cancel :=
-		context.WithCancel(
-			r.Context(),
-		)
-
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	batches := make(
-		chan log.StreamLogBatch,
-		len(targetNodes)*2,
-	)
-
-	var wg sync.WaitGroup
-
-	for _, node := range targetNodes {
-
-		wg.Add(1)
-
-		go func(
-			node *nodes.Node,
-		) {
-			defer wg.Done()
-
-			log.StreamCollectorLogs(
-				ctx,
-				node,
-				params,
-				batches,
-			)
-		}(
-			node,
-		)
-	}
-
-	go func() {
-		wg.Wait()
-
-		close(
-			batches,
-		)
-	}()
+	stream := log.StreamMergedLogs(ctx, targetNodes, params)
 
 	totalMatches := 0
 	completedNodes := 0
 	failedNodes := 0
 
-	sseBatch := make(
-		[]analysisSSELog,
-		0,
-		analysisSSEBatchSize,
-	)
+	sseBatch := make([]analysisSSELog, 0, analysisSSEBatchSize)
 
-	flushSSEBatch :=
-		func() error {
-			if len(sseBatch) == 0 {
-				return nil
-			}
-
-			if err :=
-				writeAnalysisSSE(
-					w,
-					"logs",
-					sseBatch,
-				); err != nil {
-
-				return err
-			}
-
-			flusher.Flush()
-
-			sseBatch =
-				sseBatch[:0]
-
+	flushSSEBatch := func() error {
+		if len(sseBatch) == 0 {
 			return nil
 		}
 
-	for batch := range batches {
+		if err := writeAnalysisSSE(w, "logs", sseBatch); err != nil {
+			return err
+		}
 
-		if batch.Err != nil {
+		flusher.Flush()
+		sseBatch = sseBatch[:0]
+
+		return nil
+	}
+
+	for event := range stream {
+		if event.Err != nil {
 			failedNodes++
 
-			if err :=
-				writeAnalysisSSE(
-					w,
-					"node_error",
-					analysisSSEError{
-						NodeID: batch.NodeID,
-
-						NodeName: batch.NodeName,
-
-						Message: batch.Err.Error(),
-					},
-				); err != nil {
-
+			if err := writeAnalysisSSE(w, "node_error", analysisSSEError{
+				NodeID:   event.NodeID,
+				NodeName: event.NodeName,
+				Message:  event.Err.Error(),
+			}); err != nil {
 				return
 			}
 
 			flusher.Flush()
-
 			continue
 		}
 
-		if batch.Done {
+		if event.Done {
 			completedNodes++
 
-			if err :=
-				writeAnalysisSSE(
-					w,
-					"node_done",
-					map[string]string{
-						"node_id": batch.NodeID,
-
-						"node_name": batch.NodeName,
-					},
-				); err != nil {
-
+			if err := writeAnalysisSSE(w, "node_done", map[string]string{
+				"node_id":   event.NodeID,
+				"node_name": event.NodeName,
+			}); err != nil {
 				return
 			}
 
 			flusher.Flush()
-
 			continue
 		}
 
-		if len(batch.Logs) == 0 {
+		if event.Log == nil {
 			continue
 		}
 
-		for _, item := range batch.Logs {
+		item := event.Log.Item
 
-			job, err :=
-				analysisLogToJob(
-					item.Log,
-				)
-
-			if err != nil {
-				if err :=
-					writeAnalysisSSE(
-						w,
-						"node_error",
-						analysisSSEError{
-							NodeID: batch.NodeID,
-
-							NodeName: batch.NodeName,
-
-							Message: fmt.Sprintf(
-								"failed to create audit job: %v",
-								err,
-							),
-						},
-					); err != nil {
-
-					return
-				}
-
-				flusher.Flush()
-
-				continue
+		job, err := analysisLogToJob(item.Log)
+		if err != nil {
+			if err := writeAnalysisSSE(w, "node_error", analysisSSEError{
+				NodeID:   event.NodeID,
+				NodeName: event.NodeName,
+				Message:  fmt.Sprintf("failed to create audit job: %v", err),
+			}); err != nil {
+				return
 			}
 
-			findings, err :=
-				ruleSet.Evaluate(
-					job,
-				)
+			flusher.Flush()
+			continue
+		}
 
-			if err != nil {
-				if err :=
-					writeAnalysisSSE(
-						w,
-						"node_error",
-						analysisSSEError{
-							NodeID: batch.NodeID,
-
-							NodeName: batch.NodeName,
-
-							Message: fmt.Sprintf(
-								"failed to evaluate rule set: %v",
-								err,
-							),
-						},
-					); err != nil {
-
-					return
-				}
-
-				flusher.Flush()
-
-				continue
+		findings, err := ruleSet.Evaluate(job)
+		if err != nil {
+			if err := writeAnalysisSSE(w, "node_error", analysisSSEError{
+				NodeID:   event.NodeID,
+				NodeName: event.NodeName,
+				Message:  fmt.Sprintf("failed to evaluate rule set: %v", err),
+			}); err != nil {
+				return
 			}
 
-			item.Findings =
-				append(
-					item.Findings,
-					findings...,
-				)
+			flusher.Flush()
+			continue
+		}
 
-			matches, err :=
-				query.EvaluateExpression(
-					params.Query,
-					queryExpression,
-					item,
-				)
+		item.Findings = append(item.Findings, findings...)
 
-			if err != nil {
-				if err :=
-					writeAnalysisSSE(
-						w,
-						"node_error",
-						analysisSSEError{
-							NodeID: batch.NodeID,
-
-							NodeName: batch.NodeName,
-
-							Message: fmt.Sprintf(
-								"failed to evaluate query: %v",
-								err,
-							),
-						},
-					); err != nil {
-
-					return
-				}
-
-				flusher.Flush()
-
-				continue
+		matches, err := query.EvaluateExpression(params.Query, queryExpression, item)
+		if err != nil {
+			if err := writeAnalysisSSE(w, "node_error", analysisSSEError{
+				NodeID:   event.NodeID,
+				NodeName: event.NodeName,
+				Message:  fmt.Sprintf("failed to evaluate query: %v", err),
+			}); err != nil {
+				return
 			}
 
-			if !matches {
-				continue
-			}
+			flusher.Flush()
+			continue
+		}
 
-			result, err :=
-				analysisLogItemToSSE(
-					item,
-				)
+		if !matches {
+			continue
+		}
 
-			if err != nil {
-				continue
-			}
+		result, err := analysisLogItemToSSE(item)
+		if err != nil {
+			continue
+		}
 
-			result.NodeID =
-				batch.NodeID
+		result.NodeID = event.NodeID
+		result.NodeName = event.NodeName
 
-			result.NodeName =
-				batch.NodeName
+		sseBatch = append(sseBatch, result)
+		totalMatches++
 
-			sseBatch = append(
-				sseBatch,
-				result,
-			)
-
-			totalMatches++
-
-			if len(sseBatch) >=
-				analysisSSEBatchSize {
-
-				if err :=
-					flushSSEBatch(); err != nil {
-
-					return
-				}
+		if len(sseBatch) >= analysisSSEBatchSize {
+			if err := flushSSEBatch(); err != nil {
+				return
 			}
 		}
 	}
 
-	if err :=
-		flushSSEBatch(); err != nil {
-
+	if err := flushSSEBatch(); err != nil {
 		return
 	}
 
-	if err :=
-		writeAnalysisSSE(
-			w,
-			"done",
-			map[string]int{
-				"matches": totalMatches,
-
-				"completed_nodes": completedNodes,
-
-				"failed_nodes": failedNodes,
-			},
-		); err != nil {
-
+	if err := writeAnalysisSSE(w, "done", map[string]int{
+		"matches":         totalMatches,
+		"completed_nodes": completedNodes,
+		"failed_nodes":    failedNodes,
+	}); err != nil {
 		return
 	}
 

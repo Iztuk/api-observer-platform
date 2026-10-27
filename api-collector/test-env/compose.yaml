@@ -1,20 +1,19 @@
 services:
-  juice-shop:
+  juice-shop-a:
     image: bkimminich/juice-shop:latest
     restart: unless-stopped
+    networks:
+      - api-observer-test
 
-  modsecurity:
+  modsecurity-a:
     image: docker.io/owasp/modsecurity-crs:nginx
     restart: unless-stopped
-
     depends_on:
-      - juice-shop
-
+      - juice-shop-a
     ports:
       - "8082:8080"
-
     environment:
-      BACKEND: "http://juice-shop:3000"
+      BACKEND: "http://juice-shop-a:3000"
       PORT: "8080"
 
       MODSEC_RULE_ENGINE: "DetectionOnly"
@@ -26,6 +25,140 @@ services:
 
       BLOCKING_PARANOIA: "1"
       DETECTION_PARANOIA: "1"
-
     volumes:
-      - ./logs:/var/log/modsecurity
+      - ./logs/node-a:/var/log/modsecurity
+    networks:
+      - api-observer-test
+
+  collector-a:
+    image: localhost/api-observer-collector:dev
+    restart: unless-stopped
+    depends_on:
+      - modsecurity-a
+    command:
+      - start
+      - --background=false
+      - --data-dir=/var/lib
+      - --file-path=/logs/modsec_audit.log
+      - --observer-ingest-addr=host.containers.internal:24899
+      - --query-addr=:24900
+      - --advertise-query-addr=127.0.0.1:24900
+    ports:
+      - "24900:24900"
+    volumes:
+      - ./logs/node-a:/logs:ro
+      - collector-a-data:/var/lib/api-collector
+    networks:
+      - api-observer-test
+
+  juice-shop-b:
+    image: bkimminich/juice-shop:latest
+    restart: unless-stopped
+    networks:
+      - api-observer-test
+
+  modsecurity-b:
+    image: docker.io/owasp/modsecurity-crs:nginx
+    restart: unless-stopped
+    depends_on:
+      - juice-shop-b
+    ports:
+      - "8083:8080"
+    environment:
+      BACKEND: "http://juice-shop-b:3000"
+      PORT: "8080"
+
+      MODSEC_RULE_ENGINE: "DetectionOnly"
+      MODSEC_AUDIT_ENGINE: "On"
+      MODSEC_AUDIT_LOG: "/var/log/modsecurity/modsec_audit.log"
+
+      MODSEC_RESP_BODY_ACCESS: "On"
+      MODSEC_RESP_BODY_MIMETYPE: "text/plain text/html text/xml application/json"
+
+      BLOCKING_PARANOIA: "1"
+      DETECTION_PARANOIA: "1"
+    volumes:
+      - ./logs/node-b:/var/log/modsecurity
+    networks:
+      - api-observer-test
+
+  collector-b:
+    image: localhost/api-observer-collector:dev
+    restart: unless-stopped
+    depends_on:
+      - modsecurity-b
+    command:
+      - start
+      - --background=false
+      - --data-dir=/var/lib
+      - --file-path=/logs/modsec_audit.log
+      - --observer-ingest-addr=host.containers.internal:24899
+      - --query-addr=:24900
+      - --advertise-query-addr=127.0.0.1:24901
+    ports:
+      - "24901:24900"
+    volumes:
+      - ./logs/node-b:/logs:ro
+      - collector-b-data:/var/lib/api-collector
+    networks:
+      - api-observer-test
+
+  juice-shop-c:
+    image: bkimminich/juice-shop:latest
+    restart: unless-stopped
+    networks:
+      - api-observer-test
+
+  modsecurity-c:
+    image: docker.io/owasp/modsecurity-crs:nginx
+    restart: unless-stopped
+    depends_on:
+      - juice-shop-c
+    ports:
+      - "8084:8080"
+    environment:
+      BACKEND: "http://juice-shop-c:3000"
+      PORT: "8080"
+
+      MODSEC_RULE_ENGINE: "DetectionOnly"
+      MODSEC_AUDIT_ENGINE: "On"
+      MODSEC_AUDIT_LOG: "/var/log/modsecurity/modsec_audit.log"
+
+      MODSEC_RESP_BODY_ACCESS: "On"
+      MODSEC_RESP_BODY_MIMETYPE: "text/plain text/html text/xml application/json"
+
+      BLOCKING_PARANOIA: "1"
+      DETECTION_PARANOIA: "1"
+    volumes:
+      - ./logs/node-c:/var/log/modsecurity
+    networks:
+      - api-observer-test
+
+  collector-c:
+    image: localhost/api-observer-collector:dev
+    restart: unless-stopped
+    depends_on:
+      - modsecurity-c
+    command:
+      - start
+      - --background=false
+      - --data-dir=/var/lib
+      - --file-path=/logs/modsec_audit.log
+      - --observer-ingest-addr=host.containers.internal:24899
+      - --query-addr=:24900
+      - --advertise-query-addr=127.0.0.1:24902
+    ports:
+      - "24902:24900"
+    volumes:
+      - ./logs/node-c:/logs:ro
+      - collector-c-data:/var/lib/api-collector
+    networks:
+      - api-observer-test
+
+volumes:
+  collector-a-data:
+  collector-b-data:
+  collector-c-data:
+
+networks:
+  api-observer-test:

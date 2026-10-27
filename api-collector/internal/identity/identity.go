@@ -10,17 +10,21 @@ import (
 	"github.com/google/uuid"
 )
 
-func GetOrCreateCollectorID() (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf(
-			"failed to get user config directory: %w",
-			err,
-		)
+func GetOrCreateCollectorID(dataDir string) (string, error) {
+	if dataDir == "" {
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			return "", fmt.Errorf(
+				"failed to get user config directory: %w",
+				err,
+			)
+		}
+
+		dataDir = configDir
 	}
 
 	collectorDir := filepath.Join(
-		configDir,
+		dataDir,
 		"api-collector",
 	)
 

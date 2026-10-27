@@ -7,16 +7,15 @@ templ ExplorerPage(
 	queryString string,
 	start string,
 	end string,
+	hasConnectedNodes bool,
 ) {
 	@views.Layout(title) {
-		<link
-			rel="stylesheet"
-			href="/static/css/explorer.css"
-		/>
+		<link rel="stylesheet" href="/static/css/explorer.css"/>
 		@ExplorerPageContent(
 			queryString,
 			start,
 			end,
+			hasConnectedNodes,
 		)
 		@ExplorerStreamScript()
 	}
@@ -26,6 +25,7 @@ templ ExplorerPageContent(
 	queryString string,
 	start string,
 	end string,
+	hasConnectedNodes bool,
 ) {
 	<div class="explorer-page">
 		<form
@@ -60,28 +60,16 @@ templ ExplorerPageContent(
 						stroke-linejoin="round"
 						aria-hidden="true"
 					>
-						<circle
-							cx="11"
-							cy="11"
-							r="8"
-						></circle>
-						<line
-							x1="21"
-							y1="21"
-							x2="16.65"
-							y2="16.65"
-						></line>
+						<circle cx="11" cy="11" r="8"></circle>
+						<line x1="21" y1="21" x2="16.65" y2="16.65"></line>
 					</svg>
-					<span>
-						Search
-					</span>
+					<span>Search</span>
 				</button>
 			</div>
+
 			<details class="explorer-advanced">
 				<summary>
-					<span>
-						Advanced Settings
-					</span>
+					<span>Advanced Settings</span>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						width="16"
@@ -97,11 +85,10 @@ templ ExplorerPageContent(
 						<path d="m6 9 6 6 6-6"></path>
 					</svg>
 				</summary>
+
 				<div class="explorer-filters">
 					<div class="explorer-filter">
-						<label for="explorer-start">
-							Start Date
-						</label>
+						<label for="explorer-start">Start Date</label>
 						<input
 							type="datetime-local"
 							id="explorer-start"
@@ -109,10 +96,9 @@ templ ExplorerPageContent(
 							value={ start }
 						/>
 					</div>
+
 					<div class="explorer-filter">
-						<label for="explorer-end">
-							End Date
-						</label>
+						<label for="explorer-end">End Date</label>
 						<input
 							type="datetime-local"
 							id="explorer-end"
@@ -123,14 +109,23 @@ templ ExplorerPageContent(
 				</div>
 			</details>
 		</form>
+
 		<section class="explorer-results">
 			<div
 				id="explorer-stream-status"
 				class="explorer-stream-status"
 			>
-				Connecting...
+				if !hasConnectedNodes {
+					No connected nodes.
+				} else {
+					Connecting...
+				}
 			</div>
-			<div class="explorer-table-container">
+
+			<div
+				id="explorer-table-container"
+				class="explorer-table-container"
+			>
 				<table class="explorer-table">
 					<thead>
 						<tr>
@@ -144,13 +139,15 @@ templ ExplorerPageContent(
 							<th>Findings</th>
 						</tr>
 					</thead>
+
 					<tbody id="explorer-log-body">
 						<tr id="explorer-empty-row">
-							<td
-								colspan="8"
-								class="explorer-empty"
-							>
-								Loading logs...
+							<td colspan="8" class="explorer-empty">
+								if !hasConnectedNodes {
+									No connected nodes.
+								} else {
+									Loading logs...
+								}
 							</td>
 						</tr>
 					</tbody>
@@ -164,36 +161,74 @@ templ ExplorerStreamScript() {
 	<script>
 		(() => {
 			const form = document.getElementById("explorer-form");
-
 			const body = document.getElementById("explorer-log-body");
-
+			const container = document.getElementById("explorer-table-container");
 			const statusElement = document.getElementById("explorer-stream-status");
 
-			if (!form || !body) {
+			if (!form || !body || !container) {
 				return;
 			}
 
 			const params = new URLSearchParams(new FormData(form));
-
+			const streamStartTime = performance.now();
 			const source = new EventSource("/logs?" + params.toString());
 
-			let rowCount = 0;
+			const rowHeight = 48;
+			const overscan = 20;
+
+			const logs = [];
+			const knownLogKeys = new Set();
+			const expandedRows = new Set();
+
 			let completedNodes = 0;
 			let failedNodes = 0;
 
-			const removeEmptyRow = () => {
-				const empty = document.getElementById("explorer-empty-row");
+			let renderPending = false;
+			let forceRenderPending = false;
 
-				if (empty) {
-					empty.remove();
+			let renderedStart = -1;
+			let renderedEnd = -1;
+
+			const updateStatus = (message) => {
+				if (!statusElement) {
+					return;
 				}
+
+				statusElement.textContent = message;
+			};
+
+			const formatDuration = (milliseconds) => {
+				if (milliseconds < 1000) {
+					return milliseconds.toFixed(0) + " ms";
+				}
+
+				if (milliseconds < 60000) {
+					return (milliseconds / 1000).toFixed(2) + " s";
+				}
+
+				const minutes = Math.floor(milliseconds / 60000);
+				const seconds = (milliseconds % 60000) / 1000;
+
+				return minutes + "m " + seconds.toFixed(2) + "s";
+			};
+
+			const logKey = (log) => {
+				return [
+					log.node_id || "",
+					log.request_id || "",
+					log.type || "",
+					log.timestamp || "",
+				].join("|");
 			};
 
 			const createCell = (value) => {
 				const cell = document.createElement("td");
 
 				if (value !== undefined && value !== null) {
-					cell.textContent = String(value);
+					const text = String(value);
+
+					cell.textContent = text;
+					cell.title = text;
 				}
 
 				return cell;
@@ -201,19 +236,14 @@ templ ExplorerStreamScript() {
 
 			const createDetailField = (label, value) => {
 				const field = document.createElement("div");
-
 				field.className = "explorer-detail-field";
 
 				const labelElement = document.createElement("span");
-
 				labelElement.className = "explorer-detail-label";
-
 				labelElement.textContent = label;
 
 				const valueElement = document.createElement("span");
-
 				valueElement.className = "explorer-detail-value";
-
 				valueElement.textContent = value ?? "";
 
 				field.append(labelElement, valueElement);
@@ -223,7 +253,6 @@ templ ExplorerStreamScript() {
 
 			const createFinding = (finding) => {
 				const findingElement = document.createElement("div");
-
 				findingElement.className = "explorer-finding";
 
 				if (finding.severity) {
@@ -231,19 +260,18 @@ templ ExplorerStreamScript() {
 				}
 
 				const fields = document.createElement("div");
-
 				fields.className = "explorer-finding-fields";
 
 				fields.append(
 					createDetailField("Title", finding.title || "Finding"),
-
 					createDetailField("Severity", finding.severity || "Unknown"),
-
 					createDetailField("Message", finding.message || ""),
 				);
 
 				if (Array.isArray(finding.tags) && finding.tags.length > 0) {
-					fields.append(createDetailField("Tags", finding.tags.join(", ")));
+					fields.append(
+						createDetailField("Tags", finding.tags.join(", ")),
+					);
 				}
 
 				findingElement.append(fields);
@@ -253,29 +281,23 @@ templ ExplorerStreamScript() {
 
 			const createDetailsRow = (log) => {
 				const detailsRow = document.createElement("tr");
-
 				detailsRow.className = "explorer-log-details-row";
 
-				detailsRow.hidden = true;
-
 				const cell = document.createElement("td");
-
 				cell.colSpan = 8;
 
 				const details = document.createElement("div");
-
 				details.className = "explorer-log-details";
 
-				const findings = Array.isArray(log.findings) ? log.findings : [];
+				const findings = Array.isArray(log.findings)
+					? log.findings
+					: [];
 
 				const findingsSection = document.createElement("div");
-
 				findingsSection.className = "explorer-findings";
 
 				const title = document.createElement("div");
-
 				title.className = "explorer-findings-title";
-
 				title.textContent = "Findings (" + findings.length + ")";
 
 				findingsSection.append(title);
@@ -284,7 +306,6 @@ templ ExplorerStreamScript() {
 					const empty = document.createElement("div");
 
 					empty.className = "explorer-findings-empty";
-
 					empty.textContent = "No findings for this log.";
 
 					findingsSection.append(empty);
@@ -295,73 +316,76 @@ templ ExplorerStreamScript() {
 				}
 
 				details.append(findingsSection);
-
 				cell.append(details);
-
 				detailsRow.append(cell);
 
 				return detailsRow;
 			};
 
-			const appendRow = (log) => {
-				removeEmptyRow();
+			const createSpacerRow = (height) => {
+				const row = document.createElement("tr");
+				row.className = "explorer-spacer-row";
 
-				const findings = Array.isArray(log.findings) ? log.findings : [];
+				const cell = document.createElement("td");
+
+				cell.colSpan = 8;
+				cell.style.height = Math.max(0, height) + "px";
+
+				row.append(cell);
+
+				return row;
+			};
+
+			const createLogRow = (log, index) => {
+				const findings = Array.isArray(log.findings)
+					? log.findings
+					: [];
+
+				const key = logKey(log);
+				const expanded = expandedRows.has(key);
 
 				const row = document.createElement("tr");
 
 				row.className = "explorer-log-row";
-
+				row.dataset.index = String(index);
+				row.dataset.key = key;
 				row.tabIndex = 0;
 
 				row.setAttribute("role", "button");
-
-				row.setAttribute("aria-expanded", "false");
+				row.setAttribute("aria-expanded", expanded ? "true" : "false");
 
 				const timestamp = log.timestamp
 					? new Date(log.timestamp).toLocaleString()
 					: "";
 
 				const toggleCell = document.createElement("td");
-
 				toggleCell.className = "explorer-toggle-cell";
 
 				const toggle = document.createElement("span");
-
 				toggle.className = "explorer-row-toggle";
-
-				toggle.textContent = "›";
+				toggle.textContent = expanded ? "⌄" : "›";
 
 				toggleCell.append(toggle);
 
 				row.append(
 					toggleCell,
-
 					createCell(timestamp),
-
 					createCell(log.node_name || ""),
-
 					createCell(log.type || ""),
-
 					createCell(log.method || ""),
-
 					createCell(log.path || ""),
-
 					createCell(log.status ?? ""),
-
 					createCell(findings.length),
 				);
 
-				const detailsRow = createDetailsRow(log);
-
 				const toggleDetails = () => {
-					const expanded = row.getAttribute("aria-expanded") === "true";
+					if (expandedRows.has(key)) {
+						expandedRows.delete(key);
+					} else {
+						expandedRows.add(key);
+					}
 
-					row.setAttribute("aria-expanded", expanded ? "false" : "true");
-
-					detailsRow.hidden = expanded;
-
-					toggle.textContent = expanded ? "›" : "⌄";
+					scheduleRender(true);
 				};
 
 				row.addEventListener("click", toggleDetails);
@@ -369,47 +393,205 @@ templ ExplorerStreamScript() {
 				row.addEventListener("keydown", (event) => {
 					if (event.key === "Enter" || event.key === " ") {
 						event.preventDefault();
-
 						toggleDetails();
 					}
 				});
 
-				body.append(row, detailsRow);
-
-				rowCount++;
+				return row;
 			};
 
-			const updateStatus = (message) => {
-				if (!statusElement) {
+			const getRenderWindow = () => {
+				const scrollTop = container.scrollTop;
+				const viewportHeight = container.clientHeight;
+
+				const visibleStart = Math.floor(scrollTop / rowHeight);
+				const visibleCount = Math.ceil(viewportHeight / rowHeight);
+
+				const startIndex = Math.max(0, visibleStart - overscan);
+				const endIndex = Math.min(
+					logs.length,
+					visibleStart + visibleCount + overscan,
+				);
+
+				return {
+					startIndex,
+					endIndex,
+				};
+			};
+
+			const updateSpacerHeights = (startIndex, endIndex) => {
+				const topSpacer = body.querySelector(
+					".explorer-spacer-row[data-position='top']",
+				);
+
+				const bottomSpacer = body.querySelector(
+					".explorer-spacer-row[data-position='bottom']",
+				);
+
+				const topHeight = startIndex * rowHeight;
+				const bottomHeight = Math.max(
+					0,
+					(logs.length - endIndex) * rowHeight,
+				);
+
+				if (topSpacer && topSpacer.firstElementChild) {
+					topSpacer.firstElementChild.style.height =
+						Math.max(0, topHeight) + "px";
+				}
+
+				if (bottomSpacer && bottomSpacer.firstElementChild) {
+					bottomSpacer.firstElementChild.style.height =
+						Math.max(0, bottomHeight) + "px";
+				}
+			};
+
+			const render = (force = false) => {
+				renderPending = false;
+
+				if (logs.length === 0) {
 					return;
 				}
 
-				statusElement.textContent = message;
+				const { startIndex, endIndex } = getRenderWindow();
+
+				if (
+					!force &&
+					startIndex === renderedStart &&
+					endIndex === renderedEnd
+				) {
+					updateSpacerHeights(startIndex, endIndex);
+					return;
+				}
+
+				const topHeight = startIndex * rowHeight;
+				const bottomHeight = Math.max(
+					0,
+					(logs.length - endIndex) * rowHeight,
+				);
+
+				const fragment = document.createDocumentFragment();
+
+				const topSpacer = createSpacerRow(topHeight);
+				topSpacer.dataset.position = "top";
+
+				fragment.append(topSpacer);
+
+				for (let index = startIndex; index < endIndex; index++) {
+					const log = logs[index];
+
+					fragment.append(createLogRow(log, index));
+
+					if (expandedRows.has(logKey(log))) {
+						fragment.append(createDetailsRow(log));
+					}
+				}
+
+				const bottomSpacer = createSpacerRow(bottomHeight);
+				bottomSpacer.dataset.position = "bottom";
+
+				fragment.append(bottomSpacer);
+
+				body.replaceChildren(fragment);
+
+				renderedStart = startIndex;
+				renderedEnd = endIndex;
 			};
 
+			const scheduleRender = (force = false) => {
+				if (force) {
+					forceRenderPending = true;
+				}
+
+				if (renderPending) {
+					return;
+				}
+
+				renderPending = true;
+
+				requestAnimationFrame(() => {
+					const shouldForce = forceRenderPending;
+
+					forceRenderPending = false;
+					render(shouldForce);
+				});
+			};
+
+			container.addEventListener(
+				"scroll",
+				() => {
+					scheduleRender();
+				},
+				{
+					passive: true,
+				},
+			);
+
+			window.addEventListener("resize", () => {
+				scheduleRender(true);
+			});
+
 			source.addEventListener("open", () => {
-				updateStatus("Streaming logs...");
+				updateStatus("Streaming logs from connected nodes...");
 			});
 
 			source.addEventListener("logs", (event) => {
-				const logs = JSON.parse(event.data);
+				let incoming;
 
-				for (const log of logs) {
-					appendRow(log);
+				try {
+					incoming = JSON.parse(event.data);
+				} catch (error) {
+					console.error("Failed to parse Explorer logs:", error);
+					return;
 				}
 
-				updateStatus("Streaming logs — " + rowCount + " matches");
+				if (!Array.isArray(incoming)) {
+					console.error("Invalid Explorer logs payload:", incoming);
+					return;
+				}
+
+				const uniqueIncoming = [];
+
+				for (const log of incoming) {
+					const key = logKey(log);
+
+					if (knownLogKeys.has(key)) {
+						continue;
+					}
+
+					knownLogKeys.add(key);
+					uniqueIncoming.push(log);
+				}
+
+				if (uniqueIncoming.length === 0) {
+					return;
+				}
+
+				/*
+				 * The backend k-way merge already guarantees
+				 * global ordering, so batches can be appended
+				 * directly.
+				 */
+				logs.push(...uniqueIncoming);
+
+				scheduleRender();
+
+				updateStatus(
+					"Streaming logs — " +
+						logs.length +
+						" matches",
+				);
 			});
 
 			source.addEventListener("node_done", () => {
 				completedNodes++;
 
-				const nodeLabel =
-					completedNodes === 1 ? "node complete" : "nodes complete";
+				const nodeLabel = completedNodes === 1
+					? "node complete"
+					: "nodes complete";
 
 				updateStatus(
 					"Streaming logs — " +
-						rowCount +
+						logs.length +
 						" matches, " +
 						completedNodes +
 						" " +
@@ -418,7 +600,14 @@ templ ExplorerStreamScript() {
 			});
 
 			source.addEventListener("node_error", (event) => {
-				const result = JSON.parse(event.data);
+				let result;
+
+				try {
+					result = JSON.parse(event.data);
+				} catch (error) {
+					console.error("Failed to parse node error:", error);
+					return;
+				}
 
 				failedNodes++;
 
@@ -428,11 +617,13 @@ templ ExplorerStreamScript() {
 					result.message,
 				);
 
-				const errorLabel = failedNodes === 1 ? "node error" : "node errors";
+				const errorLabel = failedNodes === 1
+					? "node error"
+					: "node errors";
 
 				updateStatus(
 					"Streaming logs — " +
-						rowCount +
+						logs.length +
 						" matches, " +
 						failedNodes +
 						" " +
@@ -441,31 +632,42 @@ templ ExplorerStreamScript() {
 			});
 
 			source.addEventListener("done", (event) => {
-				const result = JSON.parse(event.data);
+				let result;
+
+				try {
+					result = JSON.parse(event.data);
+				} catch (error) {
+					console.error("Failed to parse done event:", error);
+					source.close();
+					return;
+				}
+
+				const totalStreamTime = performance.now() - streamStartTime;
 
 				source.close();
 
-				if (rowCount === 0) {
-					removeEmptyRow();
-
+				if (logs.length === 0) {
 					const row = document.createElement("tr");
-
 					row.id = "explorer-empty-row";
 
 					const cell = document.createElement("td");
 
 					cell.colSpan = 8;
-
 					cell.className = "explorer-empty";
-
 					cell.textContent = "No logs found.";
 
 					row.append(cell);
+					body.replaceChildren(row);
 
-					body.append(row);
+					renderedStart = -1;
+					renderedEnd = -1;
+				} else {
+					scheduleRender(true);
 				}
 
-				const nodeLabel = result.completed_nodes === 1 ? "node" : "nodes";
+				const nodeLabel = result.completed_nodes === 1
+					? "node"
+					: "nodes";
 
 				let message =
 					"Complete — " +
@@ -473,7 +675,9 @@ templ ExplorerStreamScript() {
 					" matches across " +
 					result.completed_nodes +
 					" " +
-					nodeLabel;
+					nodeLabel +
+					" in " +
+					formatDuration(totalStreamTime);
 
 				if (result.failed_nodes > 0) {
 					message += " (" + result.failed_nodes + " failed)";
@@ -487,9 +691,15 @@ templ ExplorerStreamScript() {
 					return;
 				}
 
-				updateStatus("Explorer stream disconnected.");
+				if (source.readyState === EventSource.CONNECTING) {
+					updateStatus(
+						"Explorer stream disconnected — reconnecting...",
+					);
 
-				source.close();
+					return;
+				}
+
+				updateStatus("Explorer stream connection error.");
 			};
 
 			window.addEventListener("beforeunload", () => {

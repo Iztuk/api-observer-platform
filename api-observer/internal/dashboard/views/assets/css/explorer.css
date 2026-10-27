@@ -26,6 +26,7 @@
   gap: 0.75rem;
 
   flex-shrink: 0;
+
   min-width: 0;
 }
 
@@ -169,6 +170,7 @@
 
 .explorer-advanced summary svg {
   flex-shrink: 0;
+
   color: var(--muted-text-color);
 
   transition: transform 0.15s ease;
@@ -211,6 +213,7 @@
 .explorer-filter select {
   width: 100%;
   min-width: 0;
+
   box-sizing: border-box;
 
   padding: 0.75rem;
@@ -287,6 +290,8 @@
 ========================================= */
 
 .explorer-table-container {
+  position: relative;
+
   flex: 1 1 0;
 
   min-width: 0;
@@ -301,6 +306,12 @@
 
   scrollbar-width: thin;
   overscroll-behavior: contain;
+
+  /*
+   * Helps isolate layout work caused by the large
+   * virtualized table from the rest of the page.
+   */
+  contain: layout paint;
 }
 
 /* =========================================
@@ -309,7 +320,7 @@
 
 .explorer-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1000px;
 
   border-collapse: separate;
   border-spacing: 0;
@@ -318,18 +329,24 @@
 
   font-size: 0.875rem;
   text-align: left;
+
+  table-layout: fixed;
 }
 
 .explorer-table thead {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 10;
 
   background: var(--sidebar-background);
 }
 
 .explorer-table th {
-  padding: 0.9rem 1rem;
+  height: 48px;
+
+  box-sizing: border-box;
+
+  padding: 0 1rem;
 
   color: var(--muted-text-color);
 
@@ -342,29 +359,120 @@
 }
 
 .explorer-table td {
-  padding: 0.9rem 1rem;
+  box-sizing: border-box;
+
+  padding: 0 1rem;
 
   border-bottom: 1px solid var(--border-color);
 
   vertical-align: middle;
 }
 
-.explorer-table td,
-.explorer-table th {
+.explorer-table td:not(:first-child),
+.explorer-table th:not(:first-child) {
   max-width: 400px;
-  overflow-wrap: anywhere;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-table td:first-child,
+.explorer-table th:first-child {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 /* =========================================
-   Expandable Log Row
+   Table Column Widths
 ========================================= */
 
+/*
+ * Expand toggle.
+ */
+.explorer-table th:nth-child(1) {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+
+  padding: 0;
+}
+
+/*
+ * Timestamp.
+ */
+.explorer-table th:nth-child(2) {
+  width: 12rem;
+}
+
+/*
+ * Node.
+ */
+.explorer-table th:nth-child(3) {
+  width: 10rem;
+}
+
+/*
+ * Type.
+ */
+.explorer-table th:nth-child(4) {
+  width: 7rem;
+}
+
+/*
+ * Method.
+ */
+.explorer-table th:nth-child(5) {
+  width: 7rem;
+}
+
+/*
+ * Path.
+ *
+ * This column gets the remaining available width.
+ */
+.explorer-table th:nth-child(6) {
+  width: auto;
+}
+
+/*
+ * Status.
+ */
+.explorer-table th:nth-child(7) {
+  width: 6rem;
+}
+
+/*
+ * Findings.
+ */
+.explorer-table th:nth-child(8) {
+  width: 6rem;
+}
+
+/* =========================================
+   Virtualized Log Row
+========================================= */
+
+/*
+ * IMPORTANT:
+ *
+ * The JavaScript virtualizer uses a rowHeight
+ * of 48 pixels. This value must remain in sync.
+ */
+
 .explorer-log-row {
+  height: 48px;
+
   cursor: pointer;
 
   transition:
     background 0.15s ease,
     box-shadow 0.15s ease;
+}
+
+.explorer-log-row > td {
+  height: 48px;
 }
 
 .explorer-log-row:hover {
@@ -380,12 +488,16 @@
   background: var(--hover-background);
 }
 
-.explorer-toggle-cell {
-  width: 2rem;
-  min-width: 2rem;
-  max-width: 2rem;
+/* =========================================
+   Expand Toggle Column
+========================================= */
 
-  padding-right: 0.25rem !important;
+.explorer-toggle-cell {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+
+  padding: 0 !important;
 
   text-align: center;
 }
@@ -395,8 +507,8 @@
   align-items: center;
   justify-content: center;
 
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
 
   color: var(--muted-text-color);
 
@@ -416,6 +528,24 @@
 }
 
 /* =========================================
+   Virtual Scroll Spacer
+========================================= */
+
+.explorer-spacer-row {
+  pointer-events: none;
+}
+
+.explorer-spacer-row > td {
+  height: 0;
+
+  padding: 0 !important;
+
+  border: none !important;
+
+  background: transparent;
+}
+
+/* =========================================
    Expanded Detail Row
 ========================================= */
 
@@ -423,12 +553,10 @@
   background: var(--sidebar-background);
 }
 
-.explorer-log-details-row[hidden] {
-  display: none;
-}
-
 .explorer-log-details-row > td {
   padding: 0;
+
+  white-space: normal;
 
   border-bottom: 1px solid var(--border-color);
 }
@@ -437,6 +565,14 @@
   padding: 1rem 1.25rem 1.25rem;
 
   border-left: 3px solid var(--border-color);
+
+  /*
+   * Only expanded rows exist in the DOM, but
+   * content visibility still helps if several
+   * expanded rows are present.
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: 200px;
 }
 
 /* =========================================
@@ -468,6 +604,7 @@
   line-height: 1.45;
 
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* =========================================
@@ -527,10 +664,14 @@
 ========================================= */
 
 .explorer-empty {
+  height: 5rem;
+
   color: var(--muted-text-color);
 
   font-size: 0.875rem;
   text-align: center;
+
+  white-space: normal !important;
 }
 
 /* =========================================
@@ -555,7 +696,7 @@
   }
 
   .explorer-table {
-    min-width: 800px;
+    min-width: 900px;
   }
 
   .explorer-log-details {

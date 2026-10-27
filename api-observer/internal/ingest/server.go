@@ -192,6 +192,7 @@ func (s *Server) handleHeartbeat(
 	if !exists {
 		if err := s.nodeManager.Add(
 			heartbeat.CollectorId,
+			heartbeat.QueryAddr,
 			addr,
 		); err != nil {
 			return fmt.Errorf(
@@ -204,6 +205,7 @@ func (s *Server) handleHeartbeat(
 
 	if err := s.nodeManager.Heartbeat(
 		heartbeat.CollectorId,
+		heartbeat.QueryAddr,
 		time.Now(),
 	); err != nil {
 		return fmt.Errorf(

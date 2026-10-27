@@ -20,7 +20,7 @@ import (
 
 const (
 	collectorQueryPort = "24900"
-	streamBatchSize    = 100
+	streamBatchSize    = 1000
 )
 
 type StreamParams struct {

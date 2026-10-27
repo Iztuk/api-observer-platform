@@ -6,6 +6,12 @@ dashboard_port: :8080
 queue_size: 1000
 worker_count: 5
 nodes:
-    - id: 0b8bf0c0-60a5-4d36-84e0-5a3c2387a240
-      name: ModSecurity
-      addr: '[::1]:33458'
+    - id: 9d742615-0eab-431a-b4f0-00b156a11c8e
+      name: node-c
+      addr: 127.0.0.1:24902
+    - id: 4019998f-5359-4323-a714-54b1dbbdb00a
+      name: node-a
+      addr: 127.0.0.1:24900
+    - id: b50d04a8-43e7-4212-b049-fcd44cffbe53
+      name: node-b
+      addr: 127.0.0.1:24901

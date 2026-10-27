@@ -172,7 +172,8 @@ func (*Record_Heartbeat) isRecord_Event() {}
 type Heartbeat struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CollectorId   string                 `protobuf:"bytes,1,opt,name=collector_id,json=collectorId,proto3" json:"collector_id,omitempty"`
-	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	QueryAddr     string                 `protobuf:"bytes,2,opt,name=query_addr,json=queryAddr,proto3" json:"query_addr,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -210,6 +211,13 @@ func (*Heartbeat) Descriptor() ([]byte, []int) {
 func (x *Heartbeat) GetCollectorId() string {
 	if x != nil {
 		return x.CollectorId
+	}
+	return ""
+}
+
+func (x *Heartbeat) GetQueryAddr() string {
+	if x != nil {
+		return x.QueryAddr
 	}
 	return ""
 }
@@ -734,10 +742,12 @@ const file_proto_ingest_v1_ingest_proto_rawDesc = "" +
 	"\arequest\x18\x01 \x01(\v2\x1e.apiobserver.ingest.v1.RequestH\x00R\arequest\x12=\n" +
 	"\bresponse\x18\x02 \x01(\v2\x1f.apiobserver.ingest.v1.ResponseH\x00R\bresponse\x12@\n" +
 	"\theartbeat\x18\x03 \x01(\v2 .apiobserver.ingest.v1.HeartbeatH\x00R\theartbeatB\a\n" +
-	"\x05event\"h\n" +
+	"\x05event\"\x87\x01\n" +
 	"\tHeartbeat\x12!\n" +
-	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x128\n" +
-	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"{\n" +
+	"\fcollector_id\x18\x01 \x01(\tR\vcollectorId\x12\x1d\n" +
+	"\n" +
+	"query_addr\x18\x02 \x01(\tR\tqueryAddr\x128\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"{\n" +
 	"\bMetadata\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x16\n" +

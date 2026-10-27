@@ -29,9 +29,11 @@ import (
 )
 
 var background bool
+var dataDir string
 var file string
 var apiObserverAddr string
 var queryAddr string
+var advertiseQueryAddr string
 
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -52,6 +54,8 @@ var startCmd = &cobra.Command{
 				apiObserverAddr,
 				"--query-addr",
 				queryAddr,
+				"--advertise-query-addr",
+				advertiseQueryAddr,
 			)
 
 			child.Stdin = nil
@@ -103,7 +107,7 @@ var startCmd = &cobra.Command{
 		)
 
 		collectorID, err :=
-			identity.GetOrCreateCollectorID()
+			identity.GetOrCreateCollectorID(dataDir)
 		if err != nil {
 			return err
 		}
@@ -214,6 +218,7 @@ var startCmd = &cobra.Command{
 			file,
 			ingestClient,
 			collectorID,
+			advertiseQueryAddr,
 		)
 	},
 }
@@ -229,6 +234,14 @@ func init() {
 		"b",
 		true,
 		"Run API Collector in the background",
+	)
+
+	startCmd.Flags().StringVarP(
+		&dataDir,
+		"data-dir",
+		"d",
+		"",
+		"The directory for storing API Collector data",
 	)
 
 	startCmd.Flags().StringVarP(
@@ -251,8 +264,16 @@ func init() {
 		&queryAddr,
 		"query-addr",
 		"q",
-		":24900",
+		"localhost:24900",
 		"Collector historical query gRPC address",
+	)
+
+	startCmd.Flags().StringVarP(
+		&advertiseQueryAddr,
+		"advertise-query-addr",
+		"a",
+		"",
+		"Address API Observer should use to reach the collector query service",
 	)
 }
 

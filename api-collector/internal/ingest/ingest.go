@@ -166,9 +166,10 @@ func (c *Client) Send(
 
 func (c *Client) Heartbeat(
 	ctx context.Context,
-	collectorID string,
+	collectorID,
+	queryAddr string,
 ) error {
-	record := newHeartbeatRecord(collectorID)
+	record := newHeartbeatRecord(collectorID, queryAddr)
 
 	if _, err := c.Send(record); err == nil {
 		return nil
@@ -184,7 +185,7 @@ func (c *Client) Heartbeat(
 	}
 
 	// Heartbeats are safe to retry after reconnecting.
-	record = newHeartbeatRecord(collectorID)
+	record = newHeartbeatRecord(collectorID, queryAddr)
 
 	if _, err := c.Send(record); err != nil {
 		return fmt.Errorf(
@@ -197,12 +198,14 @@ func (c *Client) Heartbeat(
 }
 
 func newHeartbeatRecord(
-	collectorID string,
+	collectorID,
+	queryAddr string,
 ) *ingestv1.Record {
 	return &ingestv1.Record{
 		Event: &ingestv1.Record_Heartbeat{
 			Heartbeat: &ingestv1.Heartbeat{
 				CollectorId: collectorID,
+				QueryAddr:   queryAddr,
 				Timestamp:   timestamppb.Now(),
 			},
 		},

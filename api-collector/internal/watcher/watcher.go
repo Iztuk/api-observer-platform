@@ -47,7 +47,8 @@ func Watch(
 	ctx context.Context,
 	filePath string,
 	ingestClient *ingest.Client,
-	collectorID string,
+	collectorID,
+	queryAddr string,
 ) error {
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
@@ -86,7 +87,7 @@ func Watch(
 			return nil
 
 		case <-heartbeatTicker.C:
-			if err := ingestClient.Heartbeat(ctx, collectorID); err != nil {
+			if err := ingestClient.Heartbeat(ctx, collectorID, queryAddr); err != nil {
 				return fmt.Errorf("failed to send heartbeat: %w", err)
 			}
 
